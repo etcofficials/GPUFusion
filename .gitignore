@@ -1,0 +1,17 @@
+# Build output and packaging
+/build/
+/release/
+/temp/
+/downloads/
+
+# Runtime data (logs, settings, benchmarks, reports) — local to each machine
+/data/*
+!/data/README.md
+
+# Tooling
+/.vs/
+/.vscode/
+/.idea/
+*.user
+compile_commands.json
+CMakeUserPresets.json

@@ -1,0 +1,334 @@
+#include "core/AppPaths.h"
+#include "core/Logging.h"
+#include "core/Settings.h"
+#include "core/Version.h"
+#include "benchmarks/BenchmarkService.h"
+#include "benchmarks/LabModel.h"
+#include "benchmarks/LabRunner.h"
+#include "hardware/HardwareService.h"
+#include "monitoring/MonitorService.h"
+#include "preferences/PreferenceService.h"
+#include "diagnostics/DiagnosticReport.h"
+#include "ui/DiagnosticsCollector.h"
+#include "ui/AppContext.h"
+#include "ui/MainWindow.h"
+#include "ui/Theme.h"
+
+#include <QApplication>
+#include <QCommandLineParser>
+#include <QDir>
+#include <QFileInfo>
+#include <QMessageBox>
+#include <QScrollArea>
+#include <QStandardPaths>
+#include <QSysInfo>
+#include <QTimer>
+
+namespace {
+
+void applyLoggingSettings(const gf::Settings& s)
+{
+    gf::log::Level level = gf::log::Level::Info;
+    gf::log::parseLevel(s.logLevel, &level);
+    gf::log::setMinimumLevel(level);
+    gf::log::setLimits(qint64(s.logMaxFileKB) * 1024, s.logMaxFiles);
+}
+
+} // namespace
+
+int main(int argc, char* argv[])
+{
+    QApplication app(argc, argv);
+    QApplication::setApplicationName(QStringLiteral("GPUFusion"));
+    QApplication::setApplicationDisplayName(QStringLiteral("GPU Fusion"));
+    QApplication::setApplicationVersion(QString::fromLatin1(gf::version::kString));
+    QApplication::setOrganizationName(QStringLiteral("GPUFusion"));
+
+    QCommandLineParser cli;
+    cli.setApplicationDescription(QStringLiteral("GPU Fusion — Windows GPU monitor and workload lab"));
+    cli.addHelpOption();
+    cli.addVersionOption();
+    const QCommandLineOption dataDirOpt(QStringLiteral("data-dir"), QStringLiteral("Use <path> for settings, logs and benchmarks."), QStringLiteral("path"));
+    const QCommandLineOption pageOpt(QStringLiteral("page"), QStringLiteral("Open on page <id>: %1.").arg(gf::ui::MainWindow::pageIds().join(QStringLiteral(", "))), QStringLiteral("id"));
+    const QCommandLineOption smokeOpt(QStringLiteral("smoke-test"), QStringLiteral("Start, show the window, then exit with code 0 after <ms> (automated launch check)."), QStringLiteral("ms"), QStringLiteral("1500"));
+    const QCommandLineOption shotOpt(QStringLiteral("screenshot"), QStringLiteral("Save a PNG of the main window to <file> and exit."), QStringLiteral("file"));
+    const QCommandLineOption fullShotOpt(QStringLiteral("screenshot-full"), QStringLiteral("With --screenshot: capture the current page's entire scrollable content instead of the window."));
+    const QCommandLineOption shotDelayOpt(QStringLiteral("screenshot-after"), QStringLiteral("With --screenshot: wait <ms> after adapter detection (default 400)."), QStringLiteral("ms"), QStringLiteral("400"));
+    const QCommandLineOption verifyOpt(QStringLiteral("verify-gpu-preferences"),
+        QStringLiteral("Run the GPU preference verification (sets each preference for GPUFusionProbe.exe only, launches it, restores the original), save the report and exit."));
+    const QCommandLineOption exportOpt(QStringLiteral("export-diagnostics"),
+        QStringLiteral("Write the diagnostic report to <file>.md and <file>.json (personal identifiers removed) and exit."), QStringLiteral("file"));
+    const QCommandLineOption benchOpt(QStringLiteral("run-benchmarks"),
+        QStringLiteral("Run every available benchmark at workload size <preset> (quick, standard, heavy) with the run counts from Settings, save the session and exit. Exit code 0 only if all completed with correct output."),
+        QStringLiteral("preset"));
+    const QCommandLineOption labOpt(QStringLiteral("run-lab"),
+        QStringLiteral("Run Workload Lab experiment <name> (split, decode or all) with the run counts from Settings, save the session(s) and exit. Exit code 0 only if every mode completed with correct output."),
+        QStringLiteral("name"));
+    const QCommandLineOption labSizeOpt(QStringLiteral("lab-size"), QStringLiteral("With --run-lab: hash workload size (quick, standard, heavy; default standard)."),
+                                        QStringLiteral("preset"), QStringLiteral("standard"));
+    cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt });
+    cli.process(app);
+
+    // ---- data location + logging ----------------------------------------------
+    const QString fallbackRoot = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    const gf::DataLocation data = gf::resolveDataLocation(QApplication::applicationDirPath(), cli.value(dataDirOpt), fallbackRoot);
+    const QString layoutError = gf::ensureDataLayout(data);
+
+    QString logError;
+    const bool logging = layoutError.isEmpty() &&
+        gf::log::initialize({ data.logsDir() }, gf::log::Level::Info, &logError);
+
+    qCInfo(lcApp).noquote() << QStringLiteral("GPU Fusion %1 starting; Qt %2; %3 (kernel %4)")
+                                   .arg(QLatin1StringView(gf::version::kString), QLatin1StringView(qVersion()),
+                                        QSysInfo::prettyProductName(), QSysInfo::kernelVersion());
+    qCInfo(lcApp).noquote() << QStringLiteral("Data folder: %1 (%2)").arg(QDir::toNativeSeparators(data.root), gf::describe(data.source));
+    if (!data.problem.isEmpty())
+        qCWarning(lcApp).noquote() << data.problem;
+
+    // Graphics drivers write shader caches under %TEMP% when Direct3D devices are created (the NVIDIA
+    // driver did so on the reference machine). Point this process's TEMP/TMP at the data folder so
+    // that stays off the system drive. Process-local only; the original is kept for child processes.
+    if (layoutError.isEmpty()) {
+        const QByteArray original = qgetenv("TEMP");
+        if (!qEnvironmentVariableIsSet("GPUFUSION_ORIGINAL_TEMP"))
+            qputenv("GPUFUSION_ORIGINAL_TEMP", original);
+        const QByteArray temp = QDir::toNativeSeparators(data.tempDir()).toLocal8Bit();
+        qputenv("TEMP", temp);
+        qputenv("TMP", temp);
+        qCInfo(lcApp).noquote() << QStringLiteral("Process TEMP: %1 (was %2)").arg(QString::fromLocal8Bit(temp), QString::fromLocal8Bit(original));
+    }
+
+    if (!layoutError.isEmpty() || !logging) {
+        QMessageBox::warning(nullptr, QStringLiteral("GPU Fusion"),
+                             QStringLiteral("GPU Fusion could not prepare its data folder, so settings and logs may not be saved.\n\n%1")
+                                 .arg(layoutError.isEmpty() ? logError : layoutError));
+    }
+
+    // ---- settings ----------------------------------------------------------------
+    gf::SettingsStore store(data.settingsFile());
+    gf::SettingsStore::LoadResult loaded = store.load();
+    qCInfo(lcSettings).noquote() << QStringLiteral("Settings %1: %2").arg(gf::describe(loaded.status), QDir::toNativeSeparators(store.filePath()));
+    for (const QString& w : loaded.warnings)
+        qCWarning(lcSettings).noquote() << w;
+    if (loaded.status == gf::SettingsStore::LoadStatus::Missing) {
+        QString error;
+        if (!store.save(loaded.settings, &error))
+            qCWarning(lcSettings).noquote() << "Could not write default settings:" << error;
+    }
+    applyLoggingSettings(loaded.settings);
+
+    gf::ui::applyTheme(app, loaded.settings.theme);
+
+    // Adapter detection runs on a worker thread; the window shows "Detecting…" until it finishes.
+    gf::hw::HardwareService hardware;
+    // Monitoring starts on its own thread once the first detection has listed the adapters.
+    gf::mon::MonitorService monitor(hardware, loaded.settings);
+    hardware.refresh(true);
+
+    // GPU preferences: restores a probe value left by an interrupted verification, if any.
+    gf::pref::PreferenceService preferences(data.configDir(), data.reportsDir(),
+                                            QDir(QApplication::applicationDirPath()).filePath(QStringLiteral("GPUFusionProbe.exe")));
+
+    if (cli.isSet(verifyOpt)) {
+        // Explicit command-line request: no window, same safeguards as the button (probe only, restored).
+        if (!preferences.probeAvailable()) {
+            qCCritical(lcApp).noquote() << "GPUFusionProbe.exe is missing:" << preferences.probePath();
+            return 5;
+        }
+        QObject::connect(&preferences, &gf::pref::PreferenceService::verificationFinished, &app, [&preferences] {
+            const auto& v = preferences.lastVerification();
+            qCInfo(lcApp).noquote() << "Verification finished; restored:" << v->restored
+                                    << "; preference changes the GPU:" << !v->preferenceHasNoEffect();
+            QApplication::exit(v->restored ? 0 : 4);
+        });
+        preferences.startVerification();
+        const int code = app.exec();
+        gf::log::shutdown();
+        return code;
+    }
+
+    gf::bench::BenchmarkService benchmarks(data.benchmarksDir());
+    gf::bench::BenchmarkService lab(gf::bench::labDir(data.benchmarksDir()));
+    gf::ui::AppContext context(data, &store, std::move(loaded), &hardware, &monitor, &preferences, &benchmarks, &lab);
+    QObject::connect(&context, &gf::ui::AppContext::settingsChanged, &app, [&app, &monitor](const gf::Settings& s) {
+        applyLoggingSettings(s);
+        gf::ui::applyTheme(app, s.theme);
+        monitor.applySettings(s);
+    });
+
+    if (cli.isSet(benchOpt)) {
+        // Headless benchmark session: same runner, storage and rules as the Benchmarks page.
+        const QString preset = cli.value(benchOpt).toLower();
+        if (preset != QLatin1StringView("quick") && preset != QLatin1StringView("standard") && preset != QLatin1StringView("heavy")) {
+            qCCritical(lcApp).noquote() << "Unknown benchmark preset" << preset << "(use quick, standard or heavy)";
+            gf::log::shutdown();
+            return 2;
+        }
+        monitor.setPaused(true); // our own sampling would load the GPUs being measured
+        auto run = [&] {
+            const gf::Settings& s = context.settings();
+            gf::bench::RunOptions options;
+            options.warmupRuns = s.benchmarkWarmupRuns;
+            options.measuredRuns = s.benchmarkMeasuredRuns;
+            options.preset = preset;
+            options.hash = gf::bench::hashPreset(preset);
+            options.probePath = preferences.probeAvailable() ? preferences.probePath() : QString();
+            const auto specs = gf::bench::availableBenchmarks(*hardware.latest(), options.probePath);
+            qCInfo(lcApp).noquote() << QStringLiteral("Running %1 benchmark(s), preset %2").arg(specs.size()).arg(preset);
+            benchmarks.start(specs, options, *hardware.latest(), s.benchmarkRetentionDays);
+        };
+        QObject::connect(&benchmarks, &gf::bench::BenchmarkService::finished, &app, [&](const gf::bench::Session& session) {
+            bool allGood = benchmarks.lastSaveError().isEmpty();
+            for (const gf::bench::BenchmarkResult& r : session.results)
+                allGood = allGood && r.status == gf::bench::Status::Completed && (!r.correct.has_value() || *r.correct);
+            for (const QString& line : gf::bench::sessionSummary(session))
+                qCInfo(lcApp).noquote() << line;
+            QApplication::exit(allGood ? 0 : 7);
+        });
+        if (hardware.isRunning() || !hardware.latest())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
+        else
+            run();
+        const int code = app.exec();
+        gf::log::shutdown();
+        return code;
+    }
+
+    if (cli.isSet(labOpt)) {
+        // Headless Workload Lab: same runner, storage and analysis as the Workload Lab page.
+        const QString which = cli.value(labOpt).toLower();
+        const QString size = cli.value(labSizeOpt).toLower();
+        QStringList queue;
+        if (which == QLatin1StringView("split") || which == QLatin1StringView("all"))
+            queue << QStringLiteral("split");
+        if (which == QLatin1StringView("decode") || which == QLatin1StringView("all"))
+            queue << QStringLiteral("decode");
+        if (queue.isEmpty() || !QStringList{ QStringLiteral("quick"), QStringLiteral("standard"), QStringLiteral("heavy") }.contains(size)) {
+            qCCritical(lcApp).noquote() << "Use --run-lab split|decode|all and --lab-size quick|standard|heavy";
+            gf::log::shutdown();
+            return 2;
+        }
+        monitor.setPaused(true);
+        bool allGood = true;
+        auto next = [&] {
+            const gf::Settings& s = context.settings();
+            const gf::bench::LabOptions options = gf::bench::labOptions(s.benchmarkWarmupRuns, s.benchmarkMeasuredRuns, size, lab.benchmarksDir());
+            const QString experiment = queue.takeFirst();
+            const gf::hw::DetectionResult detection = *hardware.latest();
+            qCInfo(lcApp).noquote() << "Workload Lab:" << experiment << "experiment, size" << size;
+            lab.startJob([experiment, options, detection](const gf::bench::Progress& p, const std::atomic<bool>* c) {
+                return experiment == QLatin1StringView("split") ? gf::bench::runSplitExperiment(detection, options, p, c)
+                                                                : gf::bench::runDecodeExperiment(detection, options, p, c);
+            }, s.benchmarkRetentionDays);
+        };
+        QObject::connect(&lab, &gf::bench::BenchmarkService::finished, &app, [&](const gf::bench::Session& session) {
+            allGood = allGood && lab.lastSaveError().isEmpty();
+            bool decode = false;
+            for (const gf::bench::BenchmarkResult& r : session.results) {
+                allGood = allGood && r.status == gf::bench::Status::Completed && (!r.correct.has_value() || *r.correct);
+                decode = decode || r.testId.startsWith(QLatin1StringView("lab.decode"));
+            }
+            const gf::bench::LabAnalysis analysis = decode ? gf::bench::analyzeDecode(session) : gf::bench::analyzeSplit(session);
+            qCInfo(lcApp).noquote() << analysis.headline;
+            for (const QString& f : analysis.findings)
+                qCInfo(lcApp).noquote() << "  " << f;
+            if (queue.isEmpty())
+                QApplication::exit(allGood ? 0 : 7);
+            else
+                next();
+        });
+        if (hardware.isRunning() || !hardware.latest())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, next, Qt::SingleShotConnection);
+        else
+            next();
+        const int code = app.exec();
+        gf::log::shutdown();
+        return code;
+    }
+
+    if (cli.isSet(exportOpt)) {
+        // Headless export: wait until detection, two monitoring samples and a per-process sample with
+        // rates exist (bounded), then write the report and exit.
+        QString base = cli.value(exportOpt);
+        if (base.endsWith(QLatin1StringView(".md"), Qt::CaseInsensitive) || base.endsWith(QLatin1StringView(".json"), Qt::CaseInsensitive))
+            base = base.section(u'.', 0, -2);
+        base = QFileInfo(base).absoluteFilePath();
+        monitor.setProcessTracking(true);
+        int samples = 0;
+        auto tryExport = [&] {
+            const bool ready = hardware.latest() && samples >= 2 && monitor.latestProcesses() && monitor.latestProcesses()->ratesReady;
+            if (!ready)
+                return false;
+            QStringList written;
+            const QString error = gf::ui::exportReport(gf::diag::buildReport(gf::ui::collectReportInputs(context)), base, &written);
+            if (!error.isEmpty())
+                qCCritical(lcApp).noquote() << error;
+            QApplication::exit(error.isEmpty() ? 0 : 6);
+            return true;
+        };
+        QObject::connect(&monitor, &gf::mon::MonitorService::updated, &app, [&] { ++samples; tryExport(); });
+        QObject::connect(&monitor, &gf::mon::MonitorService::processesUpdated, &app, [&] { tryExport(); });
+        QTimer::singleShot(8000, &app, [&] { // never hang: export what exists after 8 s
+            samples = std::max(samples, 2);
+            if (!tryExport()) {
+                const QString error = gf::ui::exportReport(gf::diag::buildReport(gf::ui::collectReportInputs(context)), base, nullptr);
+                QApplication::exit(error.isEmpty() ? 0 : 6);
+            }
+        });
+        const int code = app.exec();
+        monitor.setProcessTracking(false);
+        gf::log::shutdown();
+        return code;
+    }
+
+    // ---- window ------------------------------------------------------------------
+    gf::ui::MainWindow window(context);
+    if (cli.isSet(pageOpt) && !window.showPage(cli.value(pageOpt)))
+        qCWarning(lcApp).noquote() << "Unknown page id" << cli.value(pageOpt);
+
+    const bool automated = cli.isSet(smokeOpt) || cli.isSet(shotOpt);
+    if (context.settings().startMinimized && !automated)
+        window.showMinimized();
+    else
+        window.show();
+
+    if (cli.isSet(shotOpt)) {
+        const QString file = cli.value(shotOpt);
+        const bool full = cli.isSet(fullShotOpt);
+        const int delay = std::max(0, cli.value(shotDelayOpt).toInt());
+        auto capture = [&window, file, full, delay] {
+            QTimer::singleShot(delay, &window, [&window, file, full] {
+                QWidget* target = &window;
+                if (full) {
+                    for (QScrollArea* area : window.findChildren<QScrollArea*>()) {
+                        if (area->isVisible() && area->widget()) {
+                            target = area->widget();
+                            break;
+                        }
+                    }
+                }
+                const bool ok = target->grab().save(file, "PNG");
+                qCInfo(lcApp).noquote() << "Screenshot" << (ok ? "saved to" : "FAILED for") << QDir::toNativeSeparators(file);
+                QApplication::exit(ok ? 0 : 2);
+            });
+        };
+        // Capture the finished state rather than "Detecting…".
+        if (hardware.isRunning())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &window, capture, Qt::SingleShotConnection);
+        else
+            capture();
+    } else if (cli.isSet(smokeOpt)) {
+        bool ok = false;
+        const int delay = cli.value(smokeOpt).toInt(&ok);
+        QTimer::singleShot(ok && delay > 0 ? delay : 1500, &window, [&window] {
+            const bool visible = window.isVisible();
+            qCInfo(lcApp) << "Smoke test" << (visible ? "passed: main window visible" : "FAILED: main window not visible");
+            QApplication::exit(visible ? 0 : 3);
+        });
+    }
+
+    const int rc = app.exec();
+    qCInfo(lcApp) << "Exiting with code" << rc;
+    gf::log::shutdown();
+    return rc;
+}

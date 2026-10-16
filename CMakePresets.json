@@ -1,0 +1,29 @@
+{
+  "version": 8,
+  "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_PREFIX_PATH": "$env{GPUFUSION_QT_PREFIX}",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "condition": { "type": "equals", "lhs": "$env{GPUFUSION_ENV}", "rhs": "1" }
+    },
+    { "name": "debug",   "displayName": "Debug (Ninja, portable MSVC)",   "inherits": "base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
+    { "name": "release", "displayName": "Release (Ninja, portable MSVC)", "inherits": "base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
+  ],
+  "buildPresets": [
+    { "name": "debug",   "configurePreset": "debug" },
+    { "name": "release", "configurePreset": "release" }
+  ],
+  "testPresets": [
+    { "name": "debug",   "configurePreset": "debug",   "output": { "outputOnFailure": true } },
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } }
+  ]
+}
