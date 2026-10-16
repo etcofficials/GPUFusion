@@ -8,7 +8,7 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: Phase 8 of 9 (multi-GPU experiments).** Live monitoring of every physical GPU (including
+> **Status: version 1.0.0 — all nine planned phases complete.** Live monitoring of every physical GPU (including
 > WDDM 1.x GPUs Task Manager cannot show), per-application GPU usage, adapter details, the Windows
 > per-app GPU preference (set safely and **verified with a probe**), a diagnostics page with an
 > exportable, privacy-safe report, a benchmark framework (warm-up + repeated runs, **output checked
@@ -24,6 +24,20 @@ claimed without a benchmark that measured it.
 - Development and testing hardware: Intel Core i5-2400S, 12 GB RAM, NVIDIA GeForce GT 730
   (GF108 Fermi, driver 391.35) and Intel HD Graphics 2000 (driver 9.17.10.4459).
   Verified capabilities are recorded in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+
+## Download and install
+
+From the [Releases](https://github.com/etcofficials/GPUFusion/releases) page:
+
+| File | Use |
+|---|---|
+| `GPUFusion-Windows-x64.zip` | **Portable.** Extract anywhere and run `GPUFusion\GPUFusion.exe`. Settings, logs and results are kept in a `data` folder next to it. |
+| `GPUFusion-Setup.exe` | **Installer**, per user, no administrator rights: installs to `%LOCALAPPDATA%\Programs\GPU Fusion`, adds a Start-menu entry (desktop shortcut optional) and an uninstaller. |
+| `SHA256SUMS.txt` | Checksums: `Get-FileHash -Algorithm SHA256 <file>` must match. |
+
+GPU Fusion installs no services or drivers, needs no internet connection and changes no system
+settings by itself. The only setting it can change is a program's Windows GPU preference, and only
+when you apply one on the GPU Preferences page (journalled, undoable).
 
 ## Building from source
 
@@ -49,7 +63,12 @@ The result, `build\release\bin\GPUFusion.exe`, runs directly from Explorer: the 
 the MSVC runtime are deployed next to it during the build.
 
 On another machine, adjust `scripts\env.ps1` (or set `GPUFUSION_ENV=1`, `GPUFUSION_QT_PREFIX`
-and put `cl`, `cmake` and `ninja` on PATH from a Visual Studio developer prompt).
+and put `cl`, `cmake` and `ninja` on PATH from a Visual Studio developer prompt — this is what the
+GitHub Actions workflow in `.github/workflows/build.yml` does).
+
+Release artifacts (portable folder, launcher, ZIP, installer, checksums — each verified by launching
+it) are produced by `scripts\package.ps1`; see [docs/RELEASE.md](docs/RELEASE.md).
+`Launch GPU Fusion.bat` in the repository root starts the packaged build (or the development build).
 
 ## Running
 
@@ -116,4 +135,10 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
   [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 - "Usable" on a GPU card means a Direct3D 11 device was created on it, not that any application
   is using it.
-- License not chosen yet.
+
+## License
+
+No license has been chosen yet, so all rights are reserved by the author for now. A license will be
+added before the repository is made public. Third-party components keep their own licenses: Qt 6
+(LGPL v3, used as unmodified shared libraries) and the Microsoft Visual C++ runtime
+(redistributable). See [docs/RELEASE.md](docs/RELEASE.md).

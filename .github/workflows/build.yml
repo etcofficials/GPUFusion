@@ -1,0 +1,54 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    env:
+      GPUFUSION_ENV: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $env:GPUFUSION_QT_PREFIX = $env:QT_ROOT_DIR
+          cmake --preset release
+
+      - name: Build
+        run: cmake --build --preset release
+
+      # CI machines have no physical GPU: only hardware-independent tests run here. The hardware
+      # suite (-L hardware) runs on a real PC; see docs/TESTING.md.
+      - name: Unit tests
+        run: ctest --preset release -L unit --timeout 120
+
+      - name: Upload build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GPUFusion-ci-build
+          path: |
+            build/release/bin/GPUFusion.exe
+            build/release/bin/GPUFusionProbe.exe
+          retention-days: 7

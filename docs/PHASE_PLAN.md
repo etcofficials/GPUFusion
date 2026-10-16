@@ -11,7 +11,7 @@
 | 6 | Diagnostics report and export | **Done** (2026-10-16) |
 | 7 | Benchmark framework | **Done** (2026-10-16) |
 | 8 | Multi-GPU experiments (D3D11 tiled pixel-shader work, dual video decode) | **Done** (2026-10-16) |
-| 9 | Hardening, packaging (portable ZIP, installer, shortcuts), GitHub release | Next |
+| 9 | Hardening, packaging (portable ZIP, installer, shortcuts), GitHub release | **Done** (2026-10-16) — release 1.0.0 |
 
 ## Phase 1 — delivered
 
@@ -156,9 +156,31 @@
   odd height; clip creation; hardware decode identical to software on both GPUs; two decoders at once;
   both experiments end to end; cancellation), 1 UI test driving the Workload Lab page.
 
-## Open items carried forward
+## Phase 9 — delivered
 
-- License choice (needed before Phase 9 publishing).
-- `gh auth login` by the user before publishing.
-- Child processes launched by GPU Fusion (Phase 4/5) must get the user's original TEMP back
-  (`GPUFUSION_ORIGINAL_TEMP`), not GPU Fusion's data folder.
+- **Packaging:** `scripts\package.ps1` builds and verifies the portable folder (windeployqt +
+  app-local VC++ runtime + Qt license notices), the `release\GPUFusion.exe` launcher (new
+  `GPUFusionLauncher` target: no Qt, static CRT, icon + version info), the ZIP, the NSIS per-user
+  installer (`installer\GPUFusion.nsi`) and SHA-256 checksums. `Launch GPU Fusion.bat`,
+  `scripts\make-shortcut.ps1` (desktop shortcut; a foreign "GPU Fusion.lnk" is never replaced).
+  Version 1.0.0.
+- **Verification:** extracted ZIP and launcher start the app; portable data stays next to the exe;
+  installer test-installs (files only) and its uninstaller removes the program files; no registry
+  entry or shortcut was left by the test.
+- **Hardening:** the installer's uninstaller removes only shortcuts it created; a test fixture that
+  contained this PC's real computer and user names now uses fictional ones (found by scanning every
+  file before the first push); launched programs get the original TEMP back (verified in
+  `ProbeRunner`).
+- **Debug build with the full suite** (assertions, debug heap) found three use-after-free bugs that
+  release builds hid — all in test code: references/pointers into temporaries returned by
+  `QHash::value()` and `buildReport()`. Fixed; `find(Report&&)` is now deleted so the pattern cannot
+  compile again; `src` scanned for the same pattern (none). The debug run also hit an *illegal
+  instruction* in a freshly compiled test object — disk corruption; rebuilt, it passed.
+- **Publishing:** private repository https://github.com/etcofficials/GPUFusion, commits under the
+  GitHub noreply address, GitHub Actions build + unit tests (`.github/workflows/build.yml`),
+  CHANGELOG, release v1.0.0 with the ZIP, installer and checksums. Acceptance: docs/ACCEPTANCE.md.
+
+## Open items
+
+- License: not chosen — the repository is private and "all rights reserved" until the user picks one.
+- The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

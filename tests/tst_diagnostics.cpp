@@ -98,6 +98,8 @@ const Issue* find(const Report& r, const QString& titleStart)
     }
     return nullptr;
 }
+// A pointer into a temporary report would dangle (found by the debug heap): keep the report in a variable.
+const Issue* find(Report&&, const QString&) = delete;
 
 const Technique* technique(const QList<Technique>& list, const QString& start)
 {
@@ -143,17 +145,20 @@ private Q_SLOTS:
         QCOMPARE(r.issues.first().severity, Issue::Severity::Error);
         ReportInputs none = inputs();
         none.detection.reset();
-        QVERIFY(find(buildReport(none), QStringLiteral("Hardware detection has not completed")));
+        const Report noneReport = buildReport(none);
+        QVERIFY(find(noneReport, QStringLiteral("Hardware detection has not completed")));
     }
 
     void nvmlProblemsSuggestTheRightFix()
     {
         ReportInputs in = inputs();
         in.providers[1] = mon::ProviderStatus{ QStringLiteral("NVIDIA NVML"), false, QStringLiteral("Disabled in Settings."), {} };
-        const Issue* disabled = find(buildReport(in), QStringLiteral("NVIDIA sensors are not available"));
+        const Report disabledReport = buildReport(in);
+        const Issue* disabled = find(disabledReport, QStringLiteral("NVIDIA sensors are not available"));
         QVERIFY(disabled && disabled->actions.first().contains(QStringLiteral("Settings")));
         in.providers[1].detail = QStringLiteral("nvml.dll not found");
-        const Issue* missing = find(buildReport(in), QStringLiteral("NVIDIA sensors are not available"));
+        const Report missingReport = buildReport(in);
+        const Issue* missing = find(missingReport, QStringLiteral("NVIDIA sensors are not available"));
         QVERIFY(missing && missing->actions.first().contains(QStringLiteral("Reinstall")));
     }
 
@@ -171,11 +176,13 @@ private Q_SLOTS:
             v.steps << s;
         }
         in.preferenceVerification = v;
-        const Issue* none = find(buildReport(in), QStringLiteral("The Windows GPU preference makes no difference"));
+        const Report noneReport = buildReport(in);
+        const Issue* none = find(noneReport, QStringLiteral("The Windows GPU preference makes no difference"));
         QVERIFY(none && none->detail.contains(QStringLiteral("GT 730")));
         in.preferenceVerification->restored = false;
         in.preferenceVerification->restoreError = QStringLiteral("access denied");
-        const Issue* stuck = find(buildReport(in), QStringLiteral("The probe's preference was not restored"));
+        const Report stuckReport = buildReport(in);
+        const Issue* stuck = find(stuckReport, QStringLiteral("The probe's preference was not restored"));
         QVERIFY(stuck && stuck->severity == Issue::Severity::Warning);
     }
 

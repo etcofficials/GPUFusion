@@ -59,7 +59,7 @@ private Q_SLOTS:
         const auto byPid = aggregatePdh(engines, mem, { 0x7EDA, 0x8946 });
         QCOMPARE(byPid.size(), 4); // 1344, 780, 55 (WARP only), 6224; the unknown adapter is ignored
 
-        const ProcessAdapterUsage& dwm = byPid.value(1344).first();
+        const ProcessAdapterUsage dwm = byPid.value(1344).first(); // copy: value() returns a temporary list
         QCOMPARE(dwm.utilization.value, 9.7);
         QCOMPARE(dwm.busiestEngine, QStringLiteral("compute_0"));
         QCOMPARE(dwm.engines.size(), 3);
@@ -69,7 +69,7 @@ private Q_SLOTS:
         QCOMPARE(byPid.value(55).size(), 1);
         QCOMPARE(byPid.value(55).first().luid, 0x8946ull);
 
-        const ProcessAdapterUsage& explorer = byPid.value(6224).first();
+        const ProcessAdapterUsage explorer = byPid.value(6224).first(); // copy: value() returns a temporary list
         QVERIFY(explorer.utilization.isOk());
         QCOMPARE(explorer.utilization.value, 0.0);
         QCOMPARE(activityOf(explorer), Activity::MemoryOnly); // memory alone is not GPU usage
@@ -82,7 +82,7 @@ private Q_SLOTS:
                                           engine("pid_7_luid_0x00000000_0x00007eda_phys_0_eng_3_engtype_VideoDecode", MetricValue::ok(12)),
                                           engine("pid_7_luid_0x00000000_0x00007eda_phys_0_eng_0_engtype_3D", MetricValue::ok(1)) },
                                         {}, { 0x7EDA });
-        const ProcessAdapterUsage& u = byPid.value(7).first();
+        const ProcessAdapterUsage u = byPid.value(7).first(); // copy: value() returns a temporary list
         QCOMPARE(u.engines.size(), 3);
         QCOMPARE(u.engines[0].name, QStringLiteral("3D"));
         QCOMPARE(u.engines[1].name, QStringLiteral("Video Decode 1")); // engine 3 (sorted by engine index)
@@ -94,7 +94,7 @@ private Q_SLOTS:
     {
         const auto byPid = aggregatePdh({ engine("pid_1_luid_0x00000000_0x00007eda_phys_0_eng_0_engtype_3D", MetricValue::unknown(QStringLiteral("x"))) },
                                         {}, { 0x7EDA });
-        const ProcessAdapterUsage& u = byPid.value(1).first();
+        const ProcessAdapterUsage u = byPid.value(1).first(); // copy: value() returns a temporary list
         QCOMPARE(u.utilization.state, MetricValue::State::Unknown);
         QCOMPARE(activityOf(u), Activity::None);
         QCOMPARE(u.dedicated.state, MetricValue::State::Unavailable); // no counter, not 0 bytes

@@ -22,7 +22,12 @@ namespace {
 
 const ProcessAdapterUsage* findUsage(const QHash<quint32, QList<ProcessAdapterUsage>>& byPid, quint32 pid, quint64 luid)
 {
-    for (const ProcessAdapterUsage& u : byPid.value(pid)) {
+    // Iterate the list stored in the hash: value() would return a temporary copy, and the returned
+    // pointer would dangle (caught by the debug heap).
+    const auto it = byPid.constFind(pid);
+    if (it == byPid.cend())
+        return nullptr;
+    for (const ProcessAdapterUsage& u : *it) {
         if (u.luid == luid)
             return &u;
     }

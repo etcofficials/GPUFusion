@@ -42,7 +42,9 @@ its known adapters (GT 730 FL 11_0 + D3D12; HD 2000 FL 10_1, no compute, no D3D1
 2026-10-16, release build: **20/20 suites (21 CTest entries incl. the registry cleanup fixture),
 156/156 cases passed**, reference-machine expectations enabled, 0 skipped. Two headless
 `--run-benchmarks standard` sessions and three `--run-lab` runs (2 × all, 1 × split heavy): exit
-code 0 (every mode completed, every output correct). Every page also passed a
+code 0 (every mode completed, every output correct). Phase 9: the same 21 entries also pass in the
+**debug** build (debug heap and assertions) after fixing three use-after-free bugs in test code that
+only the debug build exposed. Every page also passed a
 start/close smoke test (`--page=<id> --smoke-test`), which destroys all pages.
 
 ### Building on the development PC

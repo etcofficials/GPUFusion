@@ -1,0 +1,20 @@
+GPU Fusion - third-party components
+===================================
+
+Qt 6.8.3 (Qt Core, Qt Gui, Qt Widgets and the "windows" platform, "modernwindows" style and
+image-format plugins)
+  Copyright (C) The Qt Company Ltd. and other contributors.
+  Used under the GNU Lesser General Public License version 3 (LGPLv3); the license texts are in
+  licenses\lgpl-3.0.txt and licenses\gpl-3.0.txt (the LGPLv3 incorporates the GPLv3).
+  GPU Fusion uses the unmodified Qt libraries as separate DLLs (Qt6*.dll and the DLLs in the
+  platforms, styles and imageformats folders); you may replace them with compatible builds of your own.
+  Qt source code: https://download.qt.io/archive/qt/6.8/6.8.3/single/
+  More information: https://www.qt.io/licensing/open-source-lgpl-obligations
+
+Microsoft Visual C++ runtime (msvcp140*.dll, vcruntime140*.dll)
+  Copyright (C) Microsoft Corporation. Redistributed under the Visual Studio redistributable
+  code terms ("Redist" files of the Visual C++ 2022 toolset).
+
+Windows components used at run time, not distributed with GPU Fusion: DirectX (DXGI, Direct3D 11/12),
+Media Foundation, D3DKMT, PDH, SetupAPI. NVIDIA NVML (nvml.dll) is loaded from the NVIDIA driver
+installation when present; it is not distributed with GPU Fusion.

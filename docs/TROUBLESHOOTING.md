@@ -104,8 +104,11 @@ retention period in Settings are deleted when a new session is saved; the CSV is
 
 ## Development PC: failing G: disk (diagnosed 2026-10-16)
 
-Symptoms seen while building: corrupt `.obj`/dependency files, `LNK1104`, `LNK1136`, `C2471`, and
-an object that was not rebuilt after its header changed (heap corruption at run time).
+Symptoms seen while building: corrupt `.obj`/`.pdb`/dependency files, `LNK1104`, `LNK1136`, `LNK1285`,
+`C2471`, an object that was not rebuilt after its header changed (heap corruption at run time), and
+a freshly compiled test that crashed with an *illegal instruction* (0xC000001D) until its object was
+rebuilt. If a binary misbehaves in a way no source change explains, delete its `build\<preset>\...\CMakeFiles\<target>.dir`
+folder and rebuild.
 
 Evidence (read-only checks; SMART read once with administrator consent):
 
