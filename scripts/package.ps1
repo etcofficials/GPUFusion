@@ -109,7 +109,8 @@ if (Test-Path $makensis) {
 $lines = foreach ($f in @($zip, $setup)) {
     if (Test-Path $f) { "{0} *{1}" -f (Get-FileHash -Algorithm SHA256 $f).Hash.ToLowerInvariant(), (Split-Path -Leaf $f) }
 }
-$lines | Set-Content -Encoding ascii $sums
+# LF line endings: `sha256sum -c SHA256SUMS.txt` (Git Bash, Linux, macOS) rejects CRLF file names.
+[IO.File]::WriteAllText($sums, (($lines -join "`n") + "`n"), [Text.Encoding]::ASCII)
 
 # ---- verification ---------------------------------------------------------------------------------
 function Test-Launch([string]$exe, [string]$what) {
