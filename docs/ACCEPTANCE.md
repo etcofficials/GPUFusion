@@ -3,6 +3,9 @@
 Verified on the reference PC (Windows 10 Pro 22H2, i5-2400S, 12 GB, GeForce GT 730 + Intel HD
 Graphics 2000). "Evidence" points to the test, measurement or document that shows it.
 
+Release 1.0.1 (2026-10-17) changes licensing and packaging only (MIT `LICENSE.txt` in the packages,
+LF checksum file); it was rebuilt, re-tested with the full suite and re-verified by `package.ps1`.
+
 ## Functionality
 
 | Requirement | Status | Evidence |

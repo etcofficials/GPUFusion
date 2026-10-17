@@ -60,6 +60,27 @@ if (Test-Path (Join-Path $portable 'data')) {
     Move-Item -LiteralPath (Join-Path $portable 'data') -Destination $keptData
     Write-Host "Kept the app's data folder aside: $keptData"
 }
+function Restore-KeptData {
+    if ($script:keptData -and (Test-Path -LiteralPath $script:keptData)) {
+        New-Item -ItemType Directory -Force -Path $portable | Out-Null
+        Move-Item -LiteralPath $script:keptData -Destination (Join-Path $portable 'data')
+        Write-Host "Restored the app's data folder."
+        $script:keptData = $null
+    }
+}
+# Whatever fails below (the development disk is unreliable), the user's data goes back in place.
+trap { Restore-KeptData; break }
+
+# Starts a program and waits for it, but never forever: a launch that hangs (e.g. on unreadable
+# sectors of a failing disk) fails the check instead of blocking packaging.
+function Wait-Program([string]$exe, [string[]]$arguments, [int]$seconds, [string]$what) {
+    $p = Start-Process $exe -ArgumentList $arguments -PassThru
+    if (-not $p.WaitForExit($seconds * 1000)) {
+        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+        throw "$what did not finish within $seconds s"
+    }
+    return $p.ExitCode
+}
 if (Test-Path $portable) { Remove-Item -LiteralPath $portable -Recurse -Force }
 New-Item -ItemType Directory -Path $portable | Out-Null
 Copy-Item (Join-Path $bin 'GPUFusion.exe'), (Join-Path $bin 'GPUFusionProbe.exe') $portable
@@ -115,8 +136,8 @@ $lines = foreach ($f in @($zip, $setup)) {
 
 # ---- verification ---------------------------------------------------------------------------------
 function Test-Launch([string]$exe, [string]$what) {
-    $p = Start-Process $exe -ArgumentList '--smoke-test=1500' -PassThru -Wait
-    if ($p.ExitCode -ne 0) { throw "$what failed its launch smoke test (exit $($p.ExitCode))" }
+    $code = Wait-Program $exe @('--smoke-test=1500') 60 $what
+    if ($code -ne 0) { throw "$what failed its launch smoke test (exit $code)" }
     Write-Host "  $what starts: OK"
 }
 $verify = Join-Path $repo 'temp\package-verify'
@@ -129,8 +150,8 @@ if (-not (Test-Path (Join-Path $verify 'zip\GPUFusion\data\logs'))) { throw "Por
 Write-Host "  Portable data folder next to the executable: OK"
 # The launcher, placed next to the extracted folder exactly as in <repo>\release.
 Copy-Item (Join-Path $release 'GPUFusion.exe') (Join-Path $verify 'zip\GPUFusion.exe')
-$p = Start-Process (Join-Path $verify 'zip\GPUFusion.exe') -ArgumentList '--smoke-test=1500' -PassThru -Wait
-if ($p.ExitCode -ne 0) { throw "Launcher failed (exit $($p.ExitCode))" }
+$code = Wait-Program (Join-Path $verify 'zip\GPUFusion.exe') @('--smoke-test=1500') 30 'The launcher'
+if ($code -ne 0) { throw "Launcher failed (exit $code)" }
 $log = Join-Path $verify 'zip\GPUFusion\data\logs\gpufusion.log'
 $deadline = (Get-Date).AddSeconds(20)
 while ((Get-Date) -lt $deadline -and @(Select-String -LiteralPath $log -Pattern 'Smoke test passed').Count -lt 2) { Start-Sleep -Milliseconds 500 }
@@ -138,22 +159,19 @@ if (@(Select-String -LiteralPath $log -Pattern 'Smoke test passed').Count -lt 2)
 Write-Host "  Launcher starts the application (with arguments): OK"
 if (Test-Path $setup) {
     $target = Join-Path $verify 'installed'
-    $p = Start-Process $setup -ArgumentList '/S', '/TESTINSTALL', "/D=$target" -PassThru -Wait
-    if ($p.ExitCode -ne 0) { throw "Installer failed (exit $($p.ExitCode))" }
+    $code = Wait-Program $setup @('/S', '/TESTINSTALL', "/D=$target") 180 'The installer'
+    if ($code -ne 0) { throw "Installer failed (exit $code)" }
     Test-Launch (Join-Path $target 'GPUFusion.exe') 'Test install'
     $uninst = Join-Path $target 'Uninstall GPU Fusion.exe'
     # NSIS uninstallers copy themselves to TEMP and return at once; _?= runs in place and waits.
-    $p = Start-Process $uninst -ArgumentList '/S', "_?=$target" -PassThru -Wait
-    if ($p.ExitCode -ne 0) { throw "Uninstaller failed (exit $($p.ExitCode))" }
+    $code = Wait-Program $uninst @('/S', "_?=$target") 120 'The uninstaller'
+    if ($code -ne 0) { throw "Uninstaller failed (exit $code)" }
     $left = @(Get-ChildItem $target -Recurse -File | Where-Object { $_.Name -ne 'Uninstall GPU Fusion.exe' -and $_.FullName -notlike "*\data\*" })
     if ($left.Count) { throw "Uninstaller left program files behind: $($left.FullName -join ', ')" }
     Write-Host "  Uninstall removes the program files (keeps data unless asked): OK"
 }
 Remove-Item -LiteralPath $verify -Recurse -Force
-if ($keptData) {
-    Move-Item -LiteralPath $keptData -Destination (Join-Path $portable 'data')
-    Write-Host "Restored the app's data folder."
-}
+Restore-KeptData
 
 Write-Host ""
 Get-ChildItem $release -File | ForEach-Object { "{0,-28} {1,10:N0} KB" -f $_.Name, ($_.Length / 1KB) }

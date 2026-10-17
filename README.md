@@ -8,7 +8,7 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: version 1.0.0 — all nine planned phases complete.** Live monitoring of every physical GPU (including
+> **Status: version 1.0.1 — all nine planned phases complete.** Live monitoring of every physical GPU (including
 > WDDM 1.x GPUs Task Manager cannot show), per-application GPU usage, adapter details, the Windows
 > per-app GPU preference (set safely and **verified with a probe**), a diagnostics page with an
 > exportable, privacy-safe report, a benchmark framework (warm-up + repeated runs, **output checked

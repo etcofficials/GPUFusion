@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.0.1 — 2026-10-17
 
-- GPU Fusion is now licensed under the MIT License; packages include `LICENSE.txt`.
+Packaging and licensing only — the application is unchanged from 1.0.0.
+
+- GPU Fusion is now licensed under the MIT License; the ZIP and the installer include `LICENSE.txt`.
 - `SHA256SUMS.txt` uses LF line endings so `sha256sum -c` works on every platform.
 
 ## 1.0.0 — 2026-10-16

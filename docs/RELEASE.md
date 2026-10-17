@@ -29,8 +29,8 @@ Output in `release\` (not committed; `.gitignore`):
 
 ```powershell
 git push origin main
-gh release create v1.0.0 release\GPUFusion-Windows-x64.zip release\GPUFusion-Setup.exe release\SHA256SUMS.txt `
-   --title "GPU Fusion 1.0.0" --notes-file <notes>
+gh release create v<version> release\GPUFusion-Windows-x64.zip release\GPUFusion-Setup.exe release\SHA256SUMS.txt `
+   --title "GPU Fusion <version>" --notes-file <notes>
 ```
 
 Commits use the GitHub noreply address configured in the repository (`git config user.email`), so no
