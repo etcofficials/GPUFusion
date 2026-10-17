@@ -38,8 +38,7 @@ personal e-mail address is published.
 
 ## Licensing
 
-- GPU Fusion's own code: **no license chosen yet — all rights reserved.** Choose one (and add
-  `LICENSE`) before making the repository public.
+- GPU Fusion's own code: **MIT License** (`LICENSE`; shipped in the package as `LICENSE.txt`).
 - Qt 6.8.3 is used under the LGPLv3 as unmodified shared libraries; the package ships the license
   texts and a notice with the source location (`third_party\`).
 - The VC++ runtime DLLs are redistributable files from the MSVC 2022 toolset.

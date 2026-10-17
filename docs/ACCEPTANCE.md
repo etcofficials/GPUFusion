@@ -45,7 +45,7 @@ Graphics 2000). "Evidence" points to the test, measurement or document that show
 | Portable folder via windeployqt + `GPUFusion-Windows-x64.zip` | ✔ | Extracted ZIP launches and keeps data next to the exe |
 | Installer `GPUFusion-Setup.exe` | ✔ | Test install + uninstall verified (no shortcuts/registry in test mode) |
 | GitHub repository with README, .gitignore, docs, CI workflow, changelog | ✔ | https://github.com/etcofficials/GPUFusion (private) |
-| LICENSE only after confirming the choice | ⏳ | Not added: no license chosen yet (README says so) |
+| LICENSE only after confirming the choice | ✔ | MIT, chosen by the user on 2026-10-17; repository made public afterwards |
 | GitHub release with checksums | ✔ | Release v1.0.0 with ZIP, installer, SHA256SUMS.txt |
 
 ## Tests at release

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- GPU Fusion is now licensed under the MIT License; packages include `LICENSE.txt`.
+- `SHA256SUMS.txt` uses LF line endings so `sha256sum -c` works on every platform.
+
 ## 1.0.0 — 2026-10-16
 
 First release. Built and verified on Windows 10 22H2 with an NVIDIA GeForce GT 730 (Fermi, driver

@@ -72,6 +72,7 @@ Invoke-Native 'windeployqt' {
 # App-local VC++ runtime, exactly the files the build deployed (ucrtbase is part of Windows 10/11).
 Get-ChildItem $bin -Filter '*.dll' | Where-Object { $_.Name -match '^(msvcp140|vcruntime140)' } | Copy-Item -Destination $portable
 Copy-Item (Join-Path $repo 'CHANGELOG.md') $portable
+Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $portable 'LICENSE.txt')  # GPU Fusion: MIT
 # Qt is used under the LGPLv3: ship the notices and the license texts with the DLLs.
 Copy-Item (Join-Path $repo 'third_party\THIRD-PARTY-NOTICES.txt') $portable
 Copy-Item (Join-Path $repo 'third_party\licenses') (Join-Path $portable 'licenses') -Recurse

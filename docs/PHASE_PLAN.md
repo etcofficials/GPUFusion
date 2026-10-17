@@ -182,5 +182,4 @@
 
 ## Open items
 
-- License: not chosen — the repository is private and "all rights reserved" until the user picks one.
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

@@ -138,7 +138,6 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
 
 ## License
 
-No license has been chosen yet, so all rights are reserved by the author for now. A license will be
-added before the repository is made public. Third-party components keep their own licenses: Qt 6
-(LGPL v3, used as unmodified shared libraries) and the Microsoft Visual C++ runtime
-(redistributable). See [docs/RELEASE.md](docs/RELEASE.md).
+GPU Fusion is released under the [MIT License](LICENSE). Third-party components keep their own
+licenses: Qt 6 (LGPL v3, used as unmodified shared libraries) and the Microsoft Visual C++ runtime
+(redistributable) — see [third_party/THIRD-PARTY-NOTICES.txt](third_party/THIRD-PARTY-NOTICES.txt).
