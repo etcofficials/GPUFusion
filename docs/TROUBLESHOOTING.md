@@ -110,6 +110,14 @@ a freshly compiled test that crashed with an *illegal instruction* (0xC000001D) 
 rebuilt. If a binary misbehaves in a way no source change explains, delete its `build\<preset>\...\CMakeFiles\<target>.dir`
 folder and rebuild.
 
+While packaging 1.0.1 (2026-10-17), freshly written copies of the app on G: sometimes hung at start-up
+or failed with 0xC000007B ("invalid image format") although their bytes were identical to working
+copies; a copy of the same files elsewhere started normally. Windows keeps the loaded program image
+of a file cached separately from its data, so one bad read while loading can make every later launch
+of *that* file fail. `scripts\package.ps1` therefore times out hung launches and always puts the app's
+data folder back; re-running it writes fresh files. The published packages were verified on another
+drive after download.
+
 Evidence (read-only checks; SMART read once with administrator consent):
 
 | Source | Finding | Meaning |
