@@ -15,7 +15,9 @@ function(gpufusion_add_test name source)
     cmake_parse_arguments(ARG "" "" "LABELS" ${ARGN})
     add_executable(${name} ${source})
     target_link_libraries(${name} PRIVATE gpufusion_monitoring Qt6::Test gpufusion::options dxgi d3d11 pdh)
-    add_test(NAME ${name} COMMAND ${name})
+    # Results go to the console and to test-temp/<name>.log, which survives even if the console
+    # output is lost (e.g. a process that ends abnormally loses its buffered output).
+    add_test(NAME ${name} COMMAND ${name} -o "${GPUFUSION_TEST_TEMP}/${name}.log,txt" -o "-,txt")
     set_tests_properties(${name} PROPERTIES
         ENVIRONMENT "TEMP=${GPUFUSION_TEST_TEMP};TMP=${GPUFUSION_TEST_TEMP};QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${GPUFUSION_QT_PLUGINS}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${GPUFUSION_QT_BIN}"

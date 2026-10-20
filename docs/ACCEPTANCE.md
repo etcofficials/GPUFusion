@@ -51,6 +51,21 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | LICENSE only after confirming the choice | ✔ | MIT, chosen by the user on 2026-10-17; repository made public afterwards |
 | GitHub release with checksums | ✔ | Release v1.0.0 with ZIP, installer, SHA256SUMS.txt |
 
+## 1.1 — per-application GPU selection
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Diagnose why GPU switching did not work | ✔ | GPU_SELECTION.md: value written correctly; Windows ranks the GT 730 first for every preference (boot device, only display, no hybrid flags, Intel WDDM 1.2) |
+| Intel / NVIDIA / Automatic / Both choices | ✔ | GPU Preferences page; `tst_gpuselection`, `tst_preferences_ui` |
+| Write a preference only where justified; read it back | ✔ | Intel not written on this PC (cannot be enforced); NVIDIA written and read back (`tst_preferences_ui`) |
+| Preserve other keys and values; reversible | ✔ | `tst_preferences` (unchanged), journal + undo |
+| Verify actual GPU usage, per process tree, 3D/compute only | ✔ | `tst_appverify_live` on the hardware; `--verify-app` with Microsoft Edge |
+| NVIDIA selection verified on physical hardware | ✔ | probe rendering confirmed on GT 730 |
+| Intel selection verified on physical hardware | ✘ (Windows limitation) | measured: with power saving set, rendering stays on the GT 730; a program choosing the Intel GPU itself is seen there |
+| Launcher handling | ✔ | `cmd.exe` → probe traced to the child; button to configure the renderer |
+| Dual-GPU capability, unsupported apps marked | ✔ | dual-GPU check (PE imports + hardware); not possible on this PC for one workload |
+| No driver, firmware, global-setting or other-program changes | ✔ | only HKCU per-app values for chosen executables |
+
 ## Tests at release
 
 21 CTest entries (20 suites + registry restore fixture), 156 cases, all passing in the release build
