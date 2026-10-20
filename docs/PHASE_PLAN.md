@@ -180,6 +180,23 @@
   GitHub noreply address, GitHub Actions build + unit tests (`.github/workflows/build.yml`),
   CHANGELOG, release v1.0.0 with the ZIP, installer and checksums. Acceptance: docs/ACCEPTANCE.md.
 
+## 1.1 — real per-application GPU selection (2026-10-20)
+
+- **Audit/diagnosis:** the existing buttons wrote the real Windows value correctly; it has no effect here
+  because Windows ranks the GT 730 first for every preference (boot device, drives the only display,
+  no hybrid classification, Intel WDDM 1.2). Detection now reads Windows' kernel adapter type and the
+  primary display. Details: GPU_SELECTION.md.
+- **Implemented:** adapter-oriented choices mapped onto `GpuPreference` only where verified; values read
+  back after writing; "Verify on this PC" / `--verify-app` (launch, process tree, 3D/compute per GPU,
+  four stages, launcher resolution); dual-GPU check per program (PE imports + hardware); probe
+  `--render` / `--adapter`.
+- **Verified on the hardware:** NVIDIA selection confirmed by real rendering; Intel selection cannot be
+  enforced by Windows here (rendering stays on the GT 730 with power saving set); a program choosing the
+  Intel GPU itself is seen there; Edge (WebGL) observed rendering on the GT 730; launcher traced to child.
+- **Development incident:** the failing disk silently replaced the contents of two source files (detected
+  by hashing every tracked file against git; restored from git, `git fsck` clean). `build.ps1` now
+  refuses to build when a source changed on disk without being edited.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

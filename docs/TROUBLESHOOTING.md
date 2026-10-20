@@ -65,6 +65,11 @@ The page refreshes automatically when Windows reports a device change; **Refresh
 | "Undo … refused: changed outside GPU Fusion" | Windows Settings (or another tool) changed it after GPU Fusion did. Undo anyway only if you want GPU Fusion's earlier value back. |
 | "Could not save the change journal, so nothing was changed" | The data folder is not writable. GPU Fusion never changes a preference it cannot record. |
 | Verification shows "could not be restored" | Windows refused the restore; GPU Fusion retries at the next start. The value only affects GPUFusionProbe.exe. |
+| "Integrated GPU — Windows cannot enforce this on this PC", Apply disabled | The probe verification showed Windows still gives programs the other GPU under "Power saving". Writing it would not do what it says, so GPU Fusion does not. Use the program's own GPU setting, or (your decision, untested) drive the display from the integrated GPU. |
+| "Unknown — run the verification" | No probe verification yet on this PC; run it first (top of the page). |
+| Verify: "did no measurable GPU work while observed" | Use the program while GPU Fusion watches (open its window or a 3D view), or increase `--verify-seconds`. Programs that hand over to an already running instance exit at once — close every instance first. |
+| Verify: "GPU work … engine type not reported" | The Intel WDDM 1.2 driver does not name its engines: GPU Fusion can say *where* the work ran, not that it was 3D rendering. |
+| Verify: "The GPU work came from X.exe … probably a launcher" | The selected program starts the real renderer. Use the offered button to configure that executable instead. |
 
 ## Logs
 

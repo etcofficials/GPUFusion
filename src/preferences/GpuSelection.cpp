@@ -4,10 +4,11 @@ namespace gf::pref {
 
 namespace {
 
+// By vendor and model name, not LUID: Windows assigns new LUIDs at every boot, so a verification
+// saved before a restart would otherwise never match the current adapters. (Two identical GPUs of
+// the same kind are rejected earlier by gpuFor() as ambiguous.)
 bool sameAdapter(const ProbeAdapter& a, const SelectableGpu& g)
 {
-    if (!a.luid.isEmpty() && !g.luid.isEmpty())
-        return a.luid.compare(g.luid, Qt::CaseInsensitive) == 0;
     return a.vendorId == g.vendorId && a.name == g.name;
 }
 

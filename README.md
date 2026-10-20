@@ -8,9 +8,11 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: version 1.0.1 — all nine planned phases complete.** Live monitoring of every physical GPU (including
-> WDDM 1.x GPUs Task Manager cannot show), per-application GPU usage, adapter details, the Windows
-> per-app GPU preference (set safely and **verified with a probe**), a diagnostics page with an
+> **Status: version 1.1.0.** Live monitoring of every physical GPU (including
+> WDDM 1.x GPUs Task Manager cannot show), per-application GPU usage, adapter details, **per-application
+> GPU selection by adapter** (Intel / NVIDIA / automatic) that writes Windows' per-app preference only
+> where it is shown to work and **verifies where a program really renders** (see
+> [docs/GPU_SELECTION.md](docs/GPU_SELECTION.md)), a diagnostics page with an
 > exportable, privacy-safe report, a benchmark framework (warm-up + repeated runs, **output checked
 > bit-exactly**, JSON + CSV, comparisons only between equivalent runs), and a **Workload Lab** that
 > measures whether both GPUs together beat the best single one. On the reference PC: splitting a
@@ -89,6 +91,8 @@ GPUFusion.exe [--data-dir <path>] [--page <id>] [--smoke-test[=<ms>]] [--screens
 | `--run-benchmarks <preset>` | Run every available benchmark at size `quick`, `standard` or `heavy`, save the session, exit (0 = all completed with correct output) |
 | `--run-lab <name>` | Run Workload Lab experiment `split`, `decode` or `all`, save the session(s), print the verdicts to the log, exit (0 = every mode completed with correct output) |
 | `--lab-size <preset>` | With `--run-lab`: hash workload size for the split experiment (default `standard`) |
+| `--verify-app <exe>` | Start the program (arguments after `--`), watch which GPU its processes render on, log the staged result, exit (0 = confirmed / observed) |
+| `--verify-seconds <n>` | With `--verify-app`: how long to watch (default 20) |
 
 ## Where data is stored
 
@@ -124,8 +128,11 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
 - GT 730 (Fermi, driver 391.35): temperature, fan and performance state via NVML; power draw and
   clocks are not supported by the driver and are shown as Unsupported.
 - Monitoring cost on an i5-2400S: about 0.15 % of the CPU at the default 1-second interval.
-- On the reference PC the Windows "Power saving"/"High performance" preference does **not** change
-  which GPU programs use (verified with a probe); GPU Fusion says so before you apply one.
+- On the reference PC Windows cannot move programs to the Intel GPU: it ranks the GT 730 (boot device,
+  drives the only display; the Intel driver is WDDM 1.2) first for every preference. Verified with real
+  rendering — a program set to "Power saving" still renders on the GT 730. GPU Fusion therefore offers
+  the Intel choice only as "cannot be enforced"; programs with their own GPU setting can still use it.
+- No setting can make an existing program use both GPUs; see the dual-GPU check and the Workload Lab.
 - The Workload Lab's gains apply to GPU Fusion's own test workloads. GPU Fusion does not (and cannot,
   without patching other programs) make games or other applications use both GPUs.
 - Benchmark results are for this machine's state at the time (other programs, temperature and

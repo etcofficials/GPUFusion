@@ -110,6 +110,7 @@ add_library(gpufusion_ui STATIC
     ui/DiagnosticsCollector.cpp ui/DiagnosticsCollector.h
     ui/MainWindow.cpp ui/MainWindow.h
     ui/Theme.cpp ui/Theme.h
+    ui/UsageCheck.cpp ui/UsageCheck.h
     ui/models/ProcessTableModel.cpp ui/models/ProcessTableModel.h
     ui/pages/ApplicationsPage.cpp ui/pages/ApplicationsPage.h
     ui/pages/BenchmarksPage.cpp ui/pages/BenchmarksPage.h

@@ -17,7 +17,9 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QJsonDocument>
 #include <QRadioButton>
+#include <QSignalSpy>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -107,7 +109,7 @@ private Q_SLOTS:
         QTRY_COMPARE(prefs.manager().current(probeguard::probePath()), pref::GpuPreference::PowerSaving);
         QCOMPARE(m_store.read(*pref::findValueName(m_store, probeguard::probePath())).value(), QStringLiteral("GpuPreference=1;"));
         const auto notes = page.findChildren<QLabel*>();
-        QVERIFY(std::any_of(notes.begin(), notes.end(), [](QLabel* l) { return l->text().startsWith(QStringLiteral("Saved.")); }));
+        QVERIFY(std::any_of(notes.begin(), notes.end(), [](QLabel* l) { return l->text().startsWith(QStringLiteral("Saved and read back: GpuPreference=1;")); }));
 
         // Cancelling a change changes nothing.
         findByText<QRadioButton>(&page, QStringLiteral("Let Windows decide"))->click();
@@ -127,6 +129,97 @@ private Q_SLOTS:
         QVERIFY(undoFirst);
         undoFirst->click();
         QTRY_VERIFY(!pref::findValueName(m_store, probeguard::probePath()).has_value()); // back to "not set"
+    }
+
+    // Adapter-named choices follow the verification: with a verification in which every preference put
+    // the probe on the discrete GPU (as measured on the reference PC), "Integrated" must not write
+    // anything, "Discrete" writes High performance and reads it back, "Both" writes nothing.
+    void adapterChoicesFollowTheVerification()
+    {
+        QTemporaryDir dir;
+        DataLocation data = resolveDataLocation(dir.path(), dir.filePath(QStringLiteral("data")), dir.filePath(QStringLiteral("fb")));
+        QVERIFY(ensureDataLayout(data).isEmpty());
+        hw::HardwareService hardware;
+        QSignalSpy detected(&hardware, &hw::HardwareService::detectionFinished);
+        hardware.refresh(true);
+        QVERIFY(detected.wait(20000));
+        std::optional<pref::ProbeAdapter> discrete, integrated;
+        for (const hw::Adapter& a : hardware.latest()->adapters) {
+            if (!a.dxgi || a.isSoftware())
+                continue;
+            const pref::ProbeAdapter p{ a.name(), a.dxgi->vendorId, hw::formatLuid(a.dxgi->luid) };
+            (a.classification.value == hw::AdapterClass::Integrated ? integrated : discrete) = p;
+        }
+        if (!discrete || !integrated)
+            QSKIP("Needs an integrated and a discrete GPU");
+
+        pref::VerificationResult v; // "the preference makes no difference": always the discrete GPU
+        v.time = QDateTime::currentDateTime();
+        v.restored = true;
+        for (auto p : { pref::GpuPreference::NotSet, pref::GpuPreference::LetWindowsDecide, pref::GpuPreference::PowerSaving,
+                        pref::GpuPreference::HighPerformance }) {
+            pref::VerificationStep s;
+            s.preference = p;
+            s.ok = true;
+            s.report.d3d11Default = s.report.minimumPower = s.report.highPerformance = *discrete;
+            v.steps << s;
+        }
+        QFile report(QDir(data.reportsDir()).filePath(QStringLiteral("gpu-preference-verification.json")));
+        QVERIFY(report.open(QIODevice::WriteOnly));
+        report.write(QJsonDocument(v.toJson()).toJson());
+        report.close();
+
+        SettingsStore settingsStore(data.settingsFile());
+        auto loaded = settingsStore.load();
+        mon::MonitorService monitor(hardware, loaded.settings);
+        pref::PreferenceService prefs(data.configDir(), data.reportsDir(), probeguard::probePath());
+        QVERIFY(prefs.lastVerification().has_value());
+        QVERIFY(prefs.manager().apply(probeguard::probePath(), pref::GpuPreference::LetWindowsDecide).ok);
+        ui::AppContext context(data, &settingsStore, loaded, &hardware, &monitor, &prefs);
+        ui::PreferencesPage page(context);
+        page.resize(1100, 1000);
+        page.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&page));
+        auto* list = page.findChild<QListWidget*>();
+        for (int i = 0; i < list->count(); ++i) {
+            if (list->item(i)->data(Qt::UserRole).toString().compare(probeguard::probePath(), Qt::CaseInsensitive) == 0)
+                list->setCurrentRow(i);
+        }
+        auto byPrefix = [&](const QString& prefix) -> QRadioButton* {
+            for (QRadioButton* r : page.findChildren<QRadioButton*>()) {
+                if (r->text().startsWith(prefix))
+                    return r;
+            }
+            return nullptr;
+        };
+        QPushButton* apply = findByText<QPushButton>(&page, QStringLiteral("Apply…"));
+        QVERIFY(apply);
+
+        QRadioButton* intel = byPrefix(QStringLiteral("Integrated GPU: "));
+        QVERIFY(intel && intel->text().contains(QStringLiteral("cannot enforce")));
+        intel->click();
+        QVERIFY(!apply->isEnabled()); // nothing that would not do what it says is ever written
+
+        QRadioButton* both = byPrefix(QStringLiteral("Both GPUs"));
+        QVERIFY(both);
+        both->click();
+        QVERIFY(!apply->isEnabled());
+        const auto labels = page.findChildren<QLabel*>();
+        QVERIFY(std::any_of(labels.begin(), labels.end(), [](QLabel* l) { return l->text().contains(QStringLiteral("One rendering workload split")); }));
+
+        QRadioButton* nvidia = byPrefix(QStringLiteral("Discrete GPU: "));
+        QVERIFY(nvidia && nvidia->text().contains(QStringLiteral("Verified")));
+        nvidia->click();
+        QVERIFY(apply->isEnabled());
+        answerNextDialog(QMessageBox::Yes);
+        apply->click();
+        QTRY_COMPARE(prefs.manager().current(probeguard::probePath()), pref::GpuPreference::HighPerformance);
+        const auto after = page.findChildren<QLabel*>();
+        QVERIFY(std::any_of(after.begin(), after.end(), [](QLabel* l) { return l->text().startsWith(QStringLiteral("Saved and read back: GpuPreference=2;")); }));
+        QVERIFY(nvidia->isChecked()); // the stored value is shown as the adapter it means here
+
+        QString error;
+        QVERIFY2(m_store.remove(*pref::findValueName(m_store, probeguard::probePath()), &error), qPrintable(error));
     }
 
     void cleanupTestCase()

@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.0 — 2026-10-20
+
+Per-application GPU selection that says what it can and cannot do — and checks it.
+
+- **Choices by adapter:** Automatic, the integrated GPU, the discrete GPU, or Both, each with its
+  status on this PC (verified / expected / cannot be enforced / unknown) and the evidence. A Windows
+  value is written only where the probe verification shows it selects that adapter; the raw values
+  stay available under *Advanced*. Saved values are read back.
+- **Verify on this PC** (and `--verify-app <exe> [--verify-seconds N] [-- args]`): starts the program,
+  follows its process tree and reports, in four stages, whether the requested GPU actually did the
+  rendering — counting only 3D/compute engines of the program's own processes. Launchers are detected
+  and the rendering executable is offered instead.
+- **Dual-GPU check** for a program: which kinds of multi-GPU use are possible on this PC, from the
+  hardware and the graphics APIs the program links.
+- **Diagnosis on this PC:** Windows ranks the GT 730 first for every preference (boot device, drives the
+  only display, no hybrid classification, Intel WDDM 1.2 driver), so "power saving" cannot move programs
+  to the Intel GPU — confirmed with real rendering. The GPUs page now shows Windows' kernel adapter
+  classification and which adapter drives the primary display.
+- GPUFusionProbe `--render <s>` and `--adapter <LUID>`.
+- Fixes: GPU choices match saved verification results by model, not LUID (LUIDs change at every boot).
+- Build: stops when a source file changed on disk without being edited (failing-disk detector);
+  recovers truncated generated headers.
+
 ## 1.0.1 — 2026-10-17
 
 Packaging and licensing only — the application is unchanged from 1.0.0.

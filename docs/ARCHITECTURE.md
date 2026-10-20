@@ -211,6 +211,25 @@ BenchmarkService("<benchmarks>\lab").startJob(...)  — same storage, CSV and re
 The reference for every verdict is the best *single* device for the same work (fastest GPU alone
 for compute; fastest device decoding both streams for video), compared with `compareStats`.
 
+## Per-application GPU selection (1.1)
+
+```
+hw detection ── KernelAdapterType (KMTQAITYPE_ADAPTERTYPE), primary display per output
+pref::planChoice(choice, gpus, verification)    pure: Automatic/Integrated/Discrete/Both → value to write
+                                                 (only if justified) + Enforcement + evidence
+pref::assessDualGpu(exe, imports, system)       pure: the four kinds of multi-GPU use, for this program
+pref::win::readImports(exe)                      PE import table (graphics APIs a program links)
+mon::observeUsage(targets, {exe, args, seconds}) launch (user's environment) → follow the process tree
+                                                 (parent PID + creation time) → per-process engine
+                                                 samples per adapter (PDH for WDDM 2.x, D3DKMT for 1.x)
+mon::evaluateUsage(evidence)                     pure: 4 stages (saved, launched, activity, adapter
+                                                 confirmed), outcome, rendering executables
+ui::evaluateForApp                               stored value → requested adapter, then evaluateUsage
+   ├─ PreferencesPage: adapter choices, Apply (journalled, read back), "Verify on this PC" (worker thread)
+   └─ --verify-app <exe> [--verify-seconds N] [-- args]
+GPUFusionProbe --render <s> [--adapter <LUID>]   stand-in application for live tests
+```
+
 ## Threading
 
 - UI thread: widgets, `AppContext`, `HardwareService` state.

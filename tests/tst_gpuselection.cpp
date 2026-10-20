@@ -94,6 +94,16 @@ private Q_SLOTS:
         QVERIFY(p.reasons.join(u' ').contains(QStringLiteral("even without a preference")));
     }
 
+    void verificationFromBeforeARebootStillApplies()
+    {
+        // Same GPUs, new LUIDs (Windows reassigns them at boot).
+        SelectableGpu nv = kNvidia, intel = kIntel;
+        nv.luid = QStringLiteral("00000000_00007E2C");
+        intel.luid = QStringLiteral("00000000_000088B5");
+        QCOMPARE(planChoice(GpuChoice::Discrete, { nv, intel }, referencePc()).enforcement, Enforcement::Verified);
+        QCOMPARE(planChoice(GpuChoice::Integrated, { nv, intel }, referencePc()).enforcement, Enforcement::NotEnforceable);
+    }
+
     void hybridLaptopBothChoicesVerified()
     {
         const ChoicePlan intel = planChoice(GpuChoice::Integrated, kGpus, hybridLaptop());

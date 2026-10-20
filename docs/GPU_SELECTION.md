@@ -1,64 +1,110 @@
-# GPU selection (per-application preference)
+# GPU selection per application
 
-**Status: implemented and verified (Phase 5).** Read and shown per process on the Applications page
-(Phase 4); set, verified and undone on the GPU Preferences page.
+**Status:** adapter-oriented choices (Automatic / integrated GPU / discrete GPU / Both), mapped onto
+Windows' per-app preference only where verification justifies it, plus **verification of where a
+program really renders** (launch → observe its process tree → 3D/compute engine activity per GPU).
+Measured on the reference PC 2026-10-20.
 
-## How Windows 10 stores it
+## Diagnosis: why "use the Intel GPU" did nothing
 
-Settings → System → Display → Graphics settings writes one string value per executable under
-`HKEY_CURRENT_USER\Software\Microsoft\DirectX\UserGpuPreferences`:
+GPU Fusion's buttons were already writing the real Windows setting correctly — the value is in
+`HKCU\Software\Microsoft\DirectX\UserGpuPreferences` and reads back as written. The setting simply
+has no effect on this PC, for reasons GPU Fusion now reads from Windows itself:
 
-| Choice | Stored data |
+| | NVIDIA GeForce GT 730 | Intel HD Graphics 2000 |
+|---|---|---|
+| DXGI enumeration order | #0 (first) | #1 |
+| Kernel adapter type (`KMTQAITYPE_ADAPTERTYPE`) | render, display, **boot (POST) device** | render, display |
+| Hybrid integrated / discrete flag | — | — |
+| Displays attached | **1 (the primary)** | 0 |
+| Driver model | WDDM 2.3 | WDDM 1.2 (2012) |
+
+Windows moves a program between GPUs only for the per-app preference's *power saving* / *high
+performance* ranking (`IDXGIFactory6::EnumAdapterByGpuPreference`). On this PC Windows ranks the GT
+730 first for **every** preference, including `MINIMUM_POWER`: neither GPU carries a hybrid
+classification, the GT 730 is the boot device and drives the only monitor, and the Intel driver
+predates the GPU-preference model. Measured with the probe (Default D3D11 device under each
+preference): GT 730 every time. Measured with real rendering (below): a program with
+`GpuPreference=1;` (power saving) still renders on the GT 730.
+
+**This is a property of the hardware/driver/display configuration, not something a registry value
+can change.** GPU Fusion does not modify drivers, firmware or global settings.
+
+## What GPU Fusion does now
+
+### Choices, and what gets written
+
+| Choice | Stored value | Written only when |
+|---|---|---|
+| Automatic | value removed (`GpuPreference` key deleted, other keys kept) | always |
+| Integrated GPU (Intel) | `GpuPreference=1;` | the verification showed the probe landing on the integrated GPU under "Power saving" (or, before a full verification, Windows ranks it first for minimum power) |
+| Discrete GPU (NVIDIA) | `GpuPreference=2;` | likewise for "High performance" |
+| Both GPUs | nothing | never — see the dual-GPU check |
+
+Each choice shows *Verified on this PC*, *Expected (not verified yet)*, *Windows cannot enforce this
+on this PC* or *Unknown*, with the evidence. On the reference PC: **NVIDIA = Verified, Intel = cannot
+be enforced** (Apply is disabled for it). The raw Windows values remain available under *Advanced*.
+Adapters are matched to the saved verification by vendor and model, because Windows assigns new
+LUIDs at every boot. Every write is journalled first, read back afterwards, and undoable.
+
+### Verifying a program ("Verify on this PC…" / `--verify-app`)
+
+1. **Preference saved** — read back from Windows (or "not applicable" for Automatic).
+2. **Application launched** — GPU Fusion starts it with the user's normal environment; if an instance
+   was already running it says so (Windows applies a preference only at process start).
+3. **GPU activity observed** — once per second, per process of the *launched tree* (the program and
+   every process it starts, matched by parent PID and creation time so reused PIDs are not counted),
+   per adapter: Windows GPU counters for WDDM 2.x adapters, D3DKMT for WDDM 1.x adapters.
+   Rendering = 3D and compute engines only, at ≥ 2 % in ≥ 2 passes. Video decode/encode, copy
+   engines, other processes (e.g. the desktop compositor) and total GPU load are never counted.
+4. **Requested GPU confirmed** — rendering only on the requested adapter → *Confirmed*; on another →
+   *Not applied*; on both → *Partly*. The Intel WDDM 1.2 driver does not name its engines, so work
+   there is reported as "of unknown type": GPU Fusion can say *where* it ran, not that it was 3D.
+
+If the rendering comes from a different executable than the one selected (a launcher), GPU Fusion
+names it and offers to configure that executable instead.
+
+### Measured on the reference PC (2026-10-20)
+
+| Program | Stored preference | Result |
+|---|---|---|
+| GPUFusionProbe `--render` (default device, like a typical program) | none | **Confirmed on GT 730** — 3D up to 48 % |
+| GPUFusionProbe `--render --adapter <Intel>` (program that picks its GPU) | none | **Work seen only on Intel HD** (up to 100 %, engine type not reported) |
+| GPUFusionProbe `--render` | `GpuPreference=1;` (power saving → Intel requested) | **Not applied — rendered on GT 730** |
+| `cmd.exe /c GPUFusionProbe --render` (launcher) | none | rendering traced to GPUFusionProbe.exe; cmd.exe flagged as launcher |
+| Microsoft Edge, WebGL page (separate profile) | none | rendered on **GT 730**, 3D up to 100 % |
+
+So: **NVIDIA selection works** (it is also the default). **Intel selection cannot be enforced by
+Windows here** — verified with actual rendering, not inferred. Programs that choose their adapter
+themselves (in their own settings) can use the Intel GPU, and GPU Fusion verifies that too.
+
+## Ways a program *can* end up on the Intel GPU here
+
+- The program offers its own GPU/adapter setting (many games, editors, encoders do). Set it there,
+  then use *Verify on this PC*.
+- **Untested hypothesis, needs your decision:** connecting the monitor to the motherboard's video
+  output and making the integrated GPU the boot/primary display in the BIOS/UEFI would likely make
+  default programs use the Intel GPU — at the cost of the GT 730 for them, and with the HD 2000's
+  much lower performance. GPU Fusion does not change firmware or cabling and does not claim this works.
+
+## Dual-GPU use (the "Both GPUs" choice)
+
+| Kind | On this PC |
 |---|---|
-| Let Windows decide | `GpuPreference=0;` |
-| Power saving | `GpuPreference=1;` |
-| High performance | `GpuPreference=2;` |
+| One rendering workload split across both GPUs | **Not possible.** Direct3D 12 explicit multi-adapter needs D3D12 on both GPUs (the HD 2000 has none); SLI/CrossFire and Vulkan device groups need same-vendor GPUs. |
+| One program using each GPU for a different task | Only where the program offers a device choice per task. |
+| Two programs on different GPUs | Only programs that pick their GPU themselves (the preference cannot place them). |
+| A game on one GPU, a compute job on the other | Yes, when the second program selects the other GPU itself — the Workload Lab does exactly this. |
 
-The same string may hold other keys (e.g. `SwapEffectUpgradeEnable=1;`). GPU Fusion edits only the
-`GpuPreference` key and keeps the rest in order; "Not set" removes the key (and the value if nothing
-else is left). `DirectXUserGlobalSettings` (Windows' global switches) is never read or written.
-Per user, so no administrator rights are needed.
-
-## What it does on this PC — measured
-
-GPU Fusion ships a harmless probe, `GPUFusionProbe.exe`, which creates a Direct3D 11 device on the
-default adapter (as typical programs do) and reports the adapter it got, DXGI's enumeration order and
-what `EnumAdapterByGpuPreference` returns. The verification sets each preference **for the probe
-only**, launches it, and restores the original value.
-
-Result on the reference PC (2026-10-16, reproduced by `tst_preferences_live`, the GPU Preferences
-page and `GPUFusion.exe --verify-gpu-preferences`):
-
-| Preference set for the probe | Default D3D11 device | First adapter enumerated | `MINIMUM_POWER` query |
-|---|---|---|---|
-| Not set | GeForce GT 730 | GeForce GT 730 | GeForce GT 730 |
-| Let Windows decide | GeForce GT 730 | GeForce GT 730 | GeForce GT 730 |
-| Power saving | GeForce GT 730 | GeForce GT 730 | GeForce GT 730 |
-| High performance | GeForce GT 730 | GeForce GT 730 | GeForce GT 730 |
-
-**Conclusion: on this PC the Windows preference makes no difference.** Windows moves applications
-between GPUs only when it recognises a power-saving (integrated) adapter. It does not treat the
-Intel HD Graphics 2000 as one — consistent with its WDDM 1.2 driver, which predates the hybrid-GPU
-model. Setting "Power saving" will not move programs to the Intel GPU. GPU Fusion still lets you set
-preferences (they matter on other PCs and are harmless here) but warns before you apply one.
-
-## Ways a program *can* end up on the Intel GPU here (not automated by GPU Fusion)
-
-- The program has its own adapter setting and enumerates adapters itself (many editors and games;
-  LumaForge's renderer can be given an adapter). The Applications page shows where it really runs.
-- **Untested hypothesis:** DXGI lists the adapter driving the primary display first. Connecting the
-  monitor to the motherboard's video output and making the iGPU the primary display in the
-  BIOS/UEFI would likely make default programs use the Intel GPU — at the cost of the GT 730 for
-  them. This needs physical and firmware changes, so GPU Fusion does not attempt or claim it.
+For a selected program GPU Fusion reads which graphics APIs it links (PE import table: D3D9/11/12,
+OpenGL, Vulkan, CUDA, OpenCL) and states the verdict. **No setting can make an existing single-GPU
+program use two GPUs**; the Workload Lab shows what is measurably possible with programs written for it.
 
 ## Safety
 
-- Every change is confirmed in a dialog that shows the exact key, value, old data and new data.
-- Before Windows is touched, the change (with the previous data) is appended to
-  `data\config\gpu-preference-changes.json`; if the journal cannot be saved, nothing is changed.
-- Undo restores the previous data. It refuses — unless you confirm "Undo anyway" — if the setting
-  was changed elsewhere (e.g. in Windows Settings) since, so a newer choice is never silently lost.
-- Verification records the probe's original value as "pending" before changing it; if GPU Fusion
-  stops mid-run, the next start restores it. Last result: `data\reports\gpu-preference-verification.json`.
-- Applications must be restarted for a preference to apply; the page says so and detects whether
-  the program is running. "Launch" starts the program with the user's normal environment (TEMP).
+- Writes only `HKCU\…\DirectX\UserGpuPreferences` values for executables the user picks;
+  `DirectXUserGlobalSettings`, drivers, firmware and global settings are never touched.
+- Every change is confirmed (exact key, old and new data), journalled before writing, read back after.
+- Undo restores the previous data and refuses to overwrite a newer external change.
+- Verification of a program launches it like the user would; nothing is injected or patched.
+- The probe verification changes only GPUFusionProbe.exe's value and restores it (also after a crash).

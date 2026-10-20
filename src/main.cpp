@@ -7,12 +7,14 @@
 #include "benchmarks/LabRunner.h"
 #include "hardware/HardwareService.h"
 #include "monitoring/MonitorService.h"
+#include "monitoring/UsageObserver.h"
 #include "preferences/PreferenceService.h"
 #include "diagnostics/DiagnosticReport.h"
 #include "ui/DiagnosticsCollector.h"
 #include "ui/AppContext.h"
 #include "ui/MainWindow.h"
 #include "ui/Theme.h"
+#include "ui/UsageCheck.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -66,7 +68,14 @@ int main(int argc, char* argv[])
         QStringLiteral("name"));
     const QCommandLineOption labSizeOpt(QStringLiteral("lab-size"), QStringLiteral("With --run-lab: hash workload size (quick, standard, heavy; default standard)."),
                                         QStringLiteral("preset"), QStringLiteral("standard"));
-    cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt });
+    const QCommandLineOption verifyAppOpt(QStringLiteral("verify-app"),
+        QStringLiteral("Start <exe> (with any arguments after --), watch which GPU its processes render on, log the staged result and exit. "
+                       "Exit code 0 = the requested GPU was confirmed (or nothing was requested and GPU work was seen)."),
+        QStringLiteral("exe"));
+    const QCommandLineOption verifySecondsOpt(QStringLiteral("verify-seconds"), QStringLiteral("With --verify-app: how long to watch (default 20)."),
+                                              QStringLiteral("seconds"), QStringLiteral("20"));
+    cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
+                     verifyAppOpt, verifySecondsOpt });
     cli.process(app);
 
     // ---- data location + logging ----------------------------------------------
@@ -192,6 +201,45 @@ int main(int argc, char* argv[])
         const int code = app.exec();
         gf::log::shutdown();
         return code;
+    }
+
+    if (cli.isSet(verifyAppOpt)) {
+        // Headless per-application verification: same observer and evaluation as the GPU Preferences page.
+        const QString exe = QFileInfo(cli.value(verifyAppOpt)).absoluteFilePath();
+        if (!QFileInfo::exists(exe)) {
+            qCCritical(lcApp).noquote() << "No such program:" << QDir::toNativeSeparators(exe);
+            gf::log::shutdown();
+            return 2;
+        }
+        int exitCode = 8;
+        auto run = [&] {
+            gf::mon::ObserveOptions o;
+            o.exe = QDir::toNativeSeparators(exe);
+            o.arguments = cli.positionalArguments();
+            o.seconds = std::clamp(cli.value(verifySecondsOpt).toInt(), 3, 600);
+            const gf::hw::DetectionResult detection = *hardware.latest();
+            const gf::mon::UsageEvidence e = gf::mon::observeUsage(gf::mon::targetsFrom(detection), o);
+            const gf::mon::UsageVerdict v = gf::ui::evaluateForApp(e, preferences.manager(), detection);
+            qCInfo(lcApp).noquote() << "Verify app:" << o.exe << (o.arguments.isEmpty() ? QString() : o.arguments.join(u' '));
+            qCInfo(lcApp).noquote() << "  " << v.headline;
+            for (const gf::mon::UsageStage& s : v.stages)
+                qCInfo(lcApp).noquote() << "    " << s.name << ":" << gf::mon::stageStateText(s.state) << "-" << s.detail;
+            for (const QString& d : v.details)
+                qCInfo(lcApp).noquote() << "    " << d;
+            for (const QString& x : v.renderingExecutables)
+                qCInfo(lcApp).noquote() << "    rendering executable:" << x;
+            const bool good = v.outcome == gf::mon::UsageOutcome::Confirmed || v.outcome == gf::mon::UsageOutcome::ConfirmedUnnamed ||
+                              v.outcome == gf::mon::UsageOutcome::Observed;
+            exitCode = good ? 0 : 8;
+            QApplication::exit(exitCode);
+        };
+        if (hardware.isRunning() || !hardware.latest())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
+        else
+            QTimer::singleShot(0, &app, run);
+        app.exec();
+        gf::log::shutdown();
+        return exitCode;
     }
 
     if (cli.isSet(labOpt)) {

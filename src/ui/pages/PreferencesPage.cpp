@@ -1,10 +1,15 @@
 #include "ui/pages/PreferencesPage.h"
 
+#include "core/Logging.h"
+#include "hardware/HardwareService.h"
+#include "monitoring/UsageObserver.h"
+#include "platform/windows/PeImports.h"
 #include "platform/windows/ProbeRunner.h"
 #include "platform/windows/ProcessList.h"
 #include "preferences/PreferenceService.h"
 #include "ui/AppContext.h"
 #include "ui/Theme.h"
+#include "ui/UsageCheck.h"
 #include "ui/widgets/Card.h"
 
 #include <QButtonGroup>
@@ -12,6 +17,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -20,9 +26,13 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScrollArea>
+#include <QSet>
 #include <QTableWidget>
+#include <QThread>
 #include <QUrl>
 #include <QVBoxLayout>
+
+#include <memory>
 
 namespace gf::ui {
 
@@ -35,6 +45,15 @@ QLabel* note(const QString& text)
     auto* l = new QLabel(text);
     l->setObjectName(QStringLiteral("muted"));
     l->setWordWrap(true);
+    return l;
+}
+
+QLabel* richLabel()
+{
+    auto* l = new QLabel;
+    l->setWordWrap(true);
+    l->setTextFormat(Qt::RichText);
+    l->setTextInteractionFlags(Qt::TextSelectableByMouse);
     return l;
 }
 
@@ -53,6 +72,29 @@ QTableWidget* makeTable(const QStringList& headers)
 }
 
 QString shortValue(const std::optional<QString>& v) { return v ? *v : QObject::tr("not set"); }
+
+QColor enforcementColor(Enforcement e)
+{
+    const ThemeColors& c = colors();
+    switch (e) {
+    case Enforcement::Verified:       return c.good;
+    case Enforcement::Expected:       return c.accent;
+    case Enforcement::NotEnforceable: return c.warn;
+    default:                          return c.textMuted;
+    }
+}
+
+QColor stageColor(mon::StageState s)
+{
+    const ThemeColors& c = colors();
+    switch (s) {
+    case mon::StageState::Passed:        return c.good;
+    case mon::StageState::Failed:        return c.bad;
+    case mon::StageState::Inconclusive:  return c.warn;
+    case mon::StageState::NotApplicable: return c.textMuted;
+    }
+    return c.textMuted;
+}
 
 } // namespace
 
@@ -109,6 +151,25 @@ PreferencesPage::PreferencesPage(AppContext& context, QWidget* parent) : QWidget
     m_selected->setWordWrap(true);
     m_selected->setTextInteractionFlags(Qt::TextSelectableByMouse);
     editor->addWidget(m_selected);
+    editor->addWidget(new QLabel(tr("<b>Which GPU should it use?</b>")));
+    m_gpuChoice = new QButtonGroup(this);
+    m_auto = new QRadioButton(tr("Automatic (Windows decides)"));
+    m_integrated = new QRadioButton(tr("Integrated GPU"));
+    m_discrete = new QRadioButton(tr("Discrete GPU"));
+    m_both = new QRadioButton(tr("Both GPUs"));
+    int gid = 0;
+    for (QRadioButton* r : { m_auto, m_integrated, m_discrete, m_both }) {
+        m_gpuChoice->addButton(r, gid++);
+        editor->addWidget(r);
+    }
+    m_plan = richLabel();
+    editor->addWidget(m_plan);
+
+    m_advanced = new QGroupBox(tr("Advanced: set a raw Windows value instead"));
+    m_advanced->setCheckable(true);
+    m_advanced->setChecked(false);
+    m_advanced->setToolTip(tr("Writes exactly the chosen Windows value, whatever it does on this PC."));
+    auto* advancedLayout = new QVBoxLayout(m_advanced);
     m_choice = new QButtonGroup(this);
     m_notSet = new QRadioButton(tr("Not set (remove GPU Fusion's / Windows' choice)"));
     m_letWindows = new QRadioButton(tr("Let Windows decide"));
@@ -117,27 +178,37 @@ PreferencesPage::PreferencesPage(AppContext& context, QWidget* parent) : QWidget
     int id = 0;
     for (QRadioButton* r : { m_notSet, m_letWindows, m_power, m_performance }) {
         m_choice->addButton(r, id++);
-        editor->addWidget(r);
+        advancedLayout->addWidget(r);
     }
+    editor->addWidget(m_advanced);
+
     auto* editorButtons = new QHBoxLayout;
     m_apply = new QPushButton(tr("Apply…"));
     m_apply->setDefault(true);
+    m_verifyUsage = new QPushButton(tr("Verify on this PC…"));
+    m_verifyUsage->setToolTip(tr("Start the application and watch which GPU its processes actually render on"));
     m_launch = new QPushButton(tr("Launch"));
-    m_launch->setToolTip(tr("Start the application normally, then check the Applications page to see which GPU it really uses"));
+    m_launch->setToolTip(tr("Start the application normally"));
     auto* windowsSettings = new QPushButton(tr("Open Windows graphics settings"));
     editorButtons->addWidget(m_apply);
+    editorButtons->addWidget(m_verifyUsage);
     editorButtons->addWidget(m_launch);
     editorButtons->addStretch();
     editorButtons->addWidget(windowsSettings);
     editor->addLayout(editorButtons);
     m_editorNote = note(QString());
     editor->addWidget(m_editorNote);
+    m_usageResult = richLabel();
+    editor->addWidget(m_usageResult);
+    m_usageActions = new QVBoxLayout;
+    editor->addLayout(m_usageActions);
     editor->addStretch();
     appsRow->addLayout(editor, 2);
     appsCard->body()->addLayout(appsRow);
     appsCard->body()->addWidget(note(tr("A preference is a request, not a guarantee: it only affects programs that let Windows pick the GPU, "
                                         "and only when they next start. Programs that choose a GPU themselves (many games and editors have a "
-                                        "setting) ignore it. Changes are per user, need no administrator rights, and can be undone below.")));
+                                        "setting) ignore it — \"Verify on this PC\" shows where a program really renders. Changes are per user, "
+                                        "need no administrator rights, and can be undone below.")));
     layout->addWidget(appsCard);
 
     // --- History ---------------------------------------------------------------------------------
@@ -169,15 +240,34 @@ PreferencesPage::PreferencesPage(AppContext& context, QWidget* parent) : QWidget
     connect(&prefs, &PreferenceService::verificationFinished, this, [this] {
         setBusy(false);
         refreshVerification();
+        refreshChoices();
     });
     connect(&prefs, &PreferenceService::changed, this, [this] {
         refreshApplications();
         refreshHistory();
         refreshEditor();
     });
+    connect(&m_context.hardware(), &hw::HardwareService::detectionFinished, this, &PreferencesPage::refreshChoices);
     connect(addButton, &QPushButton::clicked, this, &PreferencesPage::addApplication);
-    connect(m_apps, &QListWidget::currentRowChanged, this, &PreferencesPage::refreshEditor);
+    connect(m_apps, &QListWidget::currentRowChanged, this, [this] {
+        m_usageResult->clear();
+        while (QLayoutItem* item = m_usageActions->takeAt(0)) {
+            delete item->widget();
+            delete item;
+        }
+        refreshEditor();
+    });
+    connect(m_gpuChoice, &QButtonGroup::idToggled, this, [this](int, bool on) {
+        if (on)
+            refreshChoices();
+    });
+    connect(m_advanced, &QGroupBox::toggled, this, [this](bool on) {
+        for (QAbstractButton* b : m_gpuChoice->buttons())
+            b->setEnabled(!on && !selectedPath().isEmpty());
+        refreshChoices();
+    });
     connect(m_apply, &QPushButton::clicked, this, &PreferencesPage::apply);
+    connect(m_verifyUsage, &QPushButton::clicked, this, &PreferencesPage::verifyUsage);
     connect(m_launch, &QPushButton::clicked, this, &PreferencesPage::launch);
     connect(windowsSettings, &QPushButton::clicked, this, [] {
         QDesktopServices::openUrl(QUrl(QStringLiteral("ms-settings:display-advancedgraphics")));
@@ -189,12 +279,58 @@ PreferencesPage::PreferencesPage(AppContext& context, QWidget* parent) : QWidget
     refreshEditor();
 }
 
+PreferencesPage::~PreferencesPage()
+{
+    m_cancelUsage = true;
+    if (m_usageThread)
+        m_usageThread->wait();
+}
+
 void PreferencesPage::setBusy(bool busy)
 {
     // The verification thread uses the registry and the journal; no edits meanwhile.
     m_verify->setEnabled(!busy && m_context.preferences().probeAvailable());
-    m_apply->setEnabled(!busy && !selectedPath().isEmpty());
     m_history->setEnabled(!busy);
+    refreshChoices();
+}
+
+QList<SelectableGpu> PreferencesPage::selectableGpus() const
+{
+    const auto& d = m_context.hardware().latest();
+    return d ? ui::selectableGpus(*d) : QList<SelectableGpu>{};
+}
+
+MultiGpuSystem PreferencesPage::multiGpuSystem() const
+{
+    MultiGpuSystem s;
+    const auto& d = m_context.hardware().latest();
+    if (!d)
+        return s;
+    QSet<quint32> vendors;
+    for (const hw::Adapter& a : d->adapters) {
+        if (!a.dxgi || a.isSoftware())
+            continue;
+        ++s.physicalGpus;
+        vendors.insert(a.dxgi->vendorId);
+        if (a.dxgi->d3d12.device.ok())
+            ++s.d3d12Gpus;
+        else
+            s.gpusWithoutD3D12 << a.name();
+    }
+    s.sameVendor = vendors.size() == 1;
+    const auto& v = m_context.preferences().lastVerification();
+    s.preferenceMovesApps = v && v->restored && !v->preferenceHasNoEffect();
+    return s;
+}
+
+GpuChoice PreferencesPage::selectedChoice() const
+{
+    switch (m_gpuChoice->checkedId()) {
+    case 1: return GpuChoice::Integrated;
+    case 2: return GpuChoice::Discrete;
+    case 3: return GpuChoice::Both;
+    default: return GpuChoice::Automatic;
+    }
 }
 
 void PreferencesPage::refreshVerification()
@@ -209,7 +345,7 @@ void PreferencesPage::refreshVerification()
         return;
     }
     if (!v) {
-        m_verdict->setText(tr("Not verified yet on this PC."));
+        m_verdict->setText(tr("Not verified yet on this PC. Run the verification so GPU Fusion knows which GPU choices Windows can enforce."));
         return;
     }
     for (const VerificationStep& s : v->steps) {
@@ -230,7 +366,7 @@ void PreferencesPage::refreshVerification()
             ok = ok ? ok : (s.ok ? &s : nullptr);
         verdict = tr("<b>On this PC the preference makes no difference</b> (verified %1): with every setting, the probe's Direct3D device "
                      "was created on <b>%2</b>. Windows only moves apps between GPUs when it recognises a power-saving (integrated) GPU; "
-                     "here it does not treat the other GPU as one — for example because its driver predates WDDM 2.0. "
+                     "here it does not treat the other GPU as one — the GPUs page shows how Windows classifies each adapter. "
                      "Setting \"Power saving\" will therefore not move apps to it.")
                       .arg(when, ok ? ok->report.d3d11Default->name.toHtmlEscaped() : QString());
     } else {
@@ -292,11 +428,14 @@ void PreferencesPage::refreshEditor()
     const bool has = !path.isEmpty();
     for (QAbstractButton* b : m_choice->buttons())
         b->setEnabled(has);
-    m_apply->setEnabled(has && !m_context.preferences().isVerifying());
+    for (QAbstractButton* b : m_gpuChoice->buttons())
+        b->setEnabled(has && !m_advanced->isChecked());
+    m_advanced->setEnabled(has);
     m_launch->setEnabled(has && QFileInfo::exists(path));
     if (!has) {
         m_selected->setText(tr("Select or add an application."));
         m_editorNote->clear();
+        refreshChoices();
         return;
     }
     PreferenceManager& manager = m_context.preferences().manager();
@@ -309,13 +448,82 @@ void PreferencesPage::refreshEditor()
                             : current == GpuPreference::HighPerformance  ? m_performance
                                                                          : m_notSet;
     button->setChecked(true);
+
+    // Show the stored value as an adapter choice where it maps to one on this PC.
+    const auto& v = m_context.preferences().lastVerification();
+    const QList<SelectableGpu> gpus = selectableGpus();
+    QRadioButton* adapterButton = m_auto;
+    if (current == GpuPreference::PowerSaving || current == GpuPreference::HighPerformance) {
+        const GpuChoice c = current == GpuPreference::PowerSaving ? GpuChoice::Integrated : GpuChoice::Discrete;
+        if (planChoice(c, gpus, v).write == current)
+            adapterButton = c == GpuChoice::Integrated ? m_integrated : m_discrete;
+        else
+            adapterButton = nullptr; // stored value that does not mean an adapter here: shown in Advanced
+    }
+    if (adapterButton) {
+        m_advanced->setChecked(false);
+        adapterButton->setChecked(true);
+    } else {
+        m_advanced->setChecked(true);
+    }
+    refreshChoices();
+}
+
+void PreferencesPage::refreshChoices()
+{
+    const QList<SelectableGpu> gpus = selectableGpus();
+    const auto& v = m_context.preferences().lastVerification();
+    const auto integrated = gpuFor(GpuChoice::Integrated, gpus);
+    const auto discrete = gpuFor(GpuChoice::Discrete, gpus);
+    const ChoicePlan intPlan = planChoice(GpuChoice::Integrated, gpus, v);
+    const ChoicePlan disPlan = planChoice(GpuChoice::Discrete, gpus, v);
+    m_integrated->setText(integrated ? tr("Integrated GPU: %1 — %2").arg(integrated->name, enforcementText(intPlan.enforcement))
+                                     : tr("Integrated GPU (none detected)"));
+    m_discrete->setText(discrete ? tr("Discrete GPU: %1 — %2").arg(discrete->name, enforcementText(disPlan.enforcement))
+                                 : tr("Discrete GPU (none detected)"));
+    m_both->setText(tr("Both GPUs — not possible as a setting (see the check below)"));
+
+    const QString path = selectedPath();
+    const bool busy = m_context.preferences().isVerifying() || m_usageThread;
+    m_verifyUsage->setEnabled(!path.isEmpty() && QFileInfo::exists(path) && !busy && m_context.hardware().latest().has_value());
+    if (path.isEmpty()) {
+        m_plan->clear();
+        m_apply->setEnabled(false);
+        return;
+    }
+    if (m_advanced->isChecked()) {
+        m_plan->setText(tr("<span style='color:%1'>Advanced: the chosen Windows value is written as is.</span>").arg(colors().textMuted.name()));
+        m_apply->setEnabled(!busy);
+        return;
+    }
+    const ChoicePlan plan = planChoice(selectedChoice(), gpus, v);
+    QStringList html{ QStringLiteral("<span style='color:%1'>&#9679;</span> %2").arg(enforcementColor(plan.enforcement).name(), plan.summary.toHtmlEscaped()) };
+    for (const QString& r : plan.reasons)
+        html << QStringLiteral("<span style='color:%1'>• %2</span>").arg(colors().textMuted.name(), r.toHtmlEscaped());
+    if (plan.choice == GpuChoice::Both) {
+        QString error;
+        const auto imports = win::readImports(path, &error);
+        const DualGpuAssessment a = assessDualGpu(QFileInfo(path).fileName(), imports, error, multiGpuSystem());
+        html << QStringLiteral("<b>%1</b>").arg(a.verdict.toHtmlEscaped());
+        for (const QString& e : a.evidence)
+            html << QStringLiteral("<span style='color:%1'>%2</span>").arg(colors().textMuted.name(), e.toHtmlEscaped());
+        for (const QString& c : a.cases)
+            html << QStringLiteral("• %1").arg(c.toHtmlEscaped());
+    }
+    m_plan->setText(html.join(QStringLiteral("<br>")));
+    m_apply->setEnabled(plan.write.has_value() && !busy);
+    m_apply->setToolTip(plan.write ? QString() : tr("Nothing would be stored: %1").arg(plan.summary));
 }
 
 void PreferencesPage::addApplication()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Choose an application"), QString(), tr("Programs (*.exe)"));
-    if (path.isEmpty())
-        return;
+    if (!path.isEmpty())
+        addAndSelect(path);
+}
+
+void PreferencesPage::addAndSelect(const QString& path)
+{
     QString why;
     if (!isConfigurableExecutable(path, &why)) {
         QMessageBox::warning(this, tr("Add application"), why);
@@ -336,15 +544,28 @@ void PreferencesPage::apply()
     const QString path = selectedPath();
     if (path.isEmpty())
         return;
-    const int choice = m_choice->checkedId();
-    const GpuPreference wanted = choice == 1 ? GpuPreference::LetWindowsDecide : choice == 2 ? GpuPreference::PowerSaving
-                               : choice == 3 ? GpuPreference::HighPerformance : GpuPreference::NotSet;
+    GpuPreference wanted = GpuPreference::NotSet;
+    QString what;
+    if (m_advanced->isChecked()) {
+        const int choice = m_choice->checkedId();
+        wanted = choice == 1 ? GpuPreference::LetWindowsDecide : choice == 2 ? GpuPreference::PowerSaving
+               : choice == 3 ? GpuPreference::HighPerformance : GpuPreference::NotSet;
+        what = gpuPreferenceText(wanted);
+    } else {
+        const ChoicePlan plan = planChoice(selectedChoice(), selectableGpus(), m_context.preferences().lastVerification());
+        if (!plan.write) {
+            m_editorNote->setText(plan.summary);
+            return;
+        }
+        wanted = *plan.write;
+        what = plan.target ? tr("%1 (stored as \"%2\")").arg(plan.target->name, gpuPreferenceText(wanted)) : gpuPreferenceText(wanted);
+    }
     PreferenceManager& manager = m_context.preferences().manager();
     const std::optional<QString> before = manager.rawValue(path);
     const QString afterText = withGpuPreference(before.value_or(QString()), wanted);
     const std::optional<QString> after = afterText.isEmpty() ? std::nullopt : std::optional<QString>(afterText);
     if (before == after) {
-        m_editorNote->setText(tr("Already set to %1; nothing to change.").arg(gpuPreferenceText(wanted)));
+        m_editorNote->setText(tr("Already set to %1; nothing to change.").arg(what));
         return;
     }
     QString message = tr("GPU Fusion will change one per-user Windows setting:\n\n"
@@ -352,7 +573,8 @@ void PreferencesPage::apply()
                          "The previous value is recorded first, so you can undo this in Change history.")
                           .arg(QDir::toNativeSeparators(path), shortValue(before), after ? *after : tr("(value removed)"));
     const auto& v = m_context.preferences().lastVerification();
-    if (v && v->restored && v->preferenceHasNoEffect() && (wanted == GpuPreference::PowerSaving || wanted == GpuPreference::HighPerformance))
+    if (m_advanced->isChecked() && v && v->restored && v->preferenceHasNoEffect() &&
+        (wanted == GpuPreference::PowerSaving || wanted == GpuPreference::HighPerformance))
         message += tr("\n\nNote: verification on this PC showed that this setting does not change which GPU programs use.");
     if (QMessageBox::question(this, tr("Change graphics preference"), message) != QMessageBox::Yes)
         return;
@@ -362,10 +584,18 @@ void PreferencesPage::apply()
         QMessageBox::warning(this, tr("Change graphics preference"), r.error);
         return;
     }
-    m_editorNote->setText(isRunning(path)
-        ? tr("Saved. %1 is running — Windows applies the preference when it next starts, so restart it.").arg(QFileInfo(path).fileName())
-        : tr("Saved. It applies the next time %1 starts. Use Launch, then the Applications page, to see which GPU it actually uses.")
-              .arg(QFileInfo(path).fileName()));
+    // Read back what Windows now has, rather than assuming the write did what was asked.
+    const std::optional<QString> stored = manager.rawValue(path);
+    const bool matches = stored == after;
+    QString saved = matches ? tr("Saved and read back: %1.").arg(shortValue(stored))
+                            : tr("Saved, but reading it back gave %1 instead of %2.").arg(shortValue(stored), shortValue(after));
+    saved += u' ';
+    saved += isRunning(path)
+        ? tr("%1 is running — Windows applies the preference when it next starts, so restart it, then use \"Verify on this PC\".")
+              .arg(QFileInfo(path).fileName())
+        : tr("It applies the next time %1 starts. Saving does not prove which GPU it will use: \"Verify on this PC\" checks that.")
+              .arg(QFileInfo(path).fileName());
+    m_editorNote->setText(saved);
     Q_EMIT m_context.preferences().changed();
 }
 
@@ -391,6 +621,86 @@ void PreferencesPage::launch()
         QMessageBox::warning(this, tr("Launch"), tr("Could not start %1: %2").arg(path, error));
     else
         m_editorNote->setText(tr("Started %1. Open the Applications page to see which GPU it uses.").arg(QFileInfo(path).fileName()));
+}
+
+void PreferencesPage::verifyUsage()
+{
+    const QString path = selectedPath();
+    const auto& detection = m_context.hardware().latest();
+    if (path.isEmpty() || !detection || m_usageThread)
+        return;
+    const bool running = isRunning(path);
+    QString message = tr("GPU Fusion will start:\n\n%1\n\nand watch for 20 seconds which GPU its processes (and the processes it starts) use. "
+                         "Use the program normally meanwhile — for example open its main window or a 3D view — so that it does GPU work.")
+                          .arg(QDir::toNativeSeparators(path));
+    if (running)
+        message += tr("\n\n%1 is already running. Windows applies a preference only when a program starts: close every instance first "
+                      "for a meaningful result.").arg(QFileInfo(path).fileName());
+    if (QMessageBox::question(this, tr("Verify on this PC"), message) != QMessageBox::Yes)
+        return;
+
+    const QList<mon::MonitorTarget> targets = mon::targetsFrom(*detection);
+    mon::ObserveOptions options;
+    options.exe = path;
+    options.seconds = 20;
+    m_cancelUsage = false;
+    auto evidence = std::make_shared<mon::UsageEvidence>();
+    QPointer<PreferencesPage> self(this);
+    m_usageThread = QThread::create([this, self, targets, options, evidence] {
+        *evidence = mon::observeUsage(targets, options, &m_cancelUsage, [self](int pass, int passes, int processes) {
+            QMetaObject::invokeMethod(self, [self, pass, passes, processes] {
+                if (self)
+                    self->m_usageResult->setText(tr("Watching… %1 of %2 s, %3 process(es) of the program seen.").arg(pass).arg(passes).arg(processes));
+            }, Qt::QueuedConnection);
+        });
+    });
+    connect(m_usageThread, &QThread::finished, this, [this, evidence] {
+        m_usageThread->deleteLater();
+        m_usageThread = nullptr;
+        showUsageResult(*evidence);
+        refreshChoices();
+    });
+    m_usageResult->setText(tr("Starting %1…").arg(QFileInfo(path).fileName()));
+    m_usageThread->start();
+    refreshChoices();
+}
+
+void PreferencesPage::showUsageResult(const mon::UsageEvidence& observed)
+{
+    const QString path = selectedPath();
+    const auto& detection = m_context.hardware().latest();
+    if (!detection)
+        return;
+    bool noAdapter = false;
+    const mon::UsageVerdict v = evaluateForApp(observed, m_context.preferences().manager(), *detection, &noAdapter);
+    qCInfo(lcPrefs).noquote() << "Usage verification of" << QDir::toNativeSeparators(observed.targetExe) << ":" << v.headline;
+
+    const ThemeColors& c = colors();
+    QStringList html{ QStringLiteral("<b>%1</b>").arg(v.headline.toHtmlEscaped()) };
+    if (noAdapter)
+        html << QStringLiteral("<span style='color:%1'>The stored value (%2) does not ask for a specific GPU, so there is no adapter to "
+                               "confirm — this shows where the program actually ran.</span>")
+                    .arg(c.textMuted.name(), shortValue(m_context.preferences().manager().rawValue(observed.targetExe)).toHtmlEscaped());
+    for (const mon::UsageStage& s : v.stages)
+        html << QStringLiteral("<span style='color:%1'>&#9679;</span> %2: <b>%3</b>%4")
+                    .arg(stageColor(s.state).name(), s.name.toHtmlEscaped(), mon::stageStateText(s.state),
+                         s.detail.isEmpty() ? QString() : QStringLiteral(" — %1").arg(s.detail.toHtmlEscaped()));
+    for (const QString& d : v.details)
+        html << QStringLiteral("<span style='color:%1'>%2</span>").arg(c.warn.name(), d.toHtmlEscaped());
+    m_usageResult->setText(html.join(QStringLiteral("<br>")));
+
+    while (QLayoutItem* item = m_usageActions->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    for (const QString& exe : v.renderingExecutables) {
+        if (QFileInfo(exe).fileName().compare(QFileInfo(path).fileName(), Qt::CaseInsensitive) == 0 || !QFileInfo(exe).isAbsolute())
+            continue;
+        auto* b = new QPushButton(tr("Configure %1 instead (it does the rendering)").arg(QFileInfo(exe).fileName()));
+        b->setToolTip(exe);
+        connect(b, &QPushButton::clicked, this, [this, exe] { addAndSelect(exe); });
+        m_usageActions->addWidget(b);
+    }
 }
 
 void PreferencesPage::refreshHistory()
