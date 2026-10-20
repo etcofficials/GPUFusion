@@ -24,13 +24,15 @@ $repo = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'env.ps1') -Quiet
 
 # Errors that mean "an intermediate file is unreadable/corrupt", not "the code is wrong".
-$corruptionPattern = 'LNK1104|LNK1136|LNK1201|LNK1285|C2471|C1090|cmake_ninja_dyndep failed to parse|invalid or corrupt file'
+# (C1004 "unexpected end-of-file" counts only when the named file is a generated one inside the build
+# directory, e.g. a truncated shader header; files outside the build directory are never deleted.)
+$corruptionPattern = 'LNK1104|LNK1136|LNK1201|LNK1285|C2471|C1090|C1004|cmake_ninja_dyndep failed to parse|invalid or corrupt file'
 
 function Remove-DamagedOutputs([string[]]$lines, [string]$buildDir) {
     $removed = @()
     foreach ($line in $lines) {
         if ($line -notmatch $corruptionPattern) { continue }
-        foreach ($m in [regex]::Matches($line, "([A-Za-z]:\\[^'`"\s]+|[\w\\/.\-]+)\.(obj|ddi|pdb|lib|modmap)")) {
+        foreach ($m in [regex]::Matches($line, "([A-Za-z]:\\[^'`"\s]+|[\w\\/.\-]+)\.(obj|ddi|pdb|lib|modmap|h)\b")) {
             $p = $m.Value
             if (-not [IO.Path]::IsPathRooted($p)) { $p = Join-Path $buildDir $p }
             $full = [IO.Path]::GetFullPath($p)
@@ -77,8 +79,28 @@ function Find-StaleObjects([string]$buildDir) {
     return $stale
 }
 
+# Source integrity: a tracked file whose content differs from git although it was not modified after
+# the last commit was not edited — its content changed underneath (the failing disk returned another
+# file's data inside OpenClInfo.cpp once). Such files stop the build; restore them with
+# `git checkout -- <file>`. Edits always carry a newer modification time, so they pass.
+function Find-CorruptedSources([string]$repo) {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue) -or -not (Test-Path (Join-Path $repo '.git'))) { return @() }
+    $headTime = [DateTimeOffset]::FromUnixTimeSeconds([long](git -C $repo log -1 --format=%ct)).UtcDateTime
+    git -C $repo update-index -q --really-refresh 2>$null | Out-Null   # re-read contents, ignore cached stat data
+    $suspects = @()
+    foreach ($f in @(git -C $repo diff --name-only 2>$null)) {
+        $p = Join-Path $repo $f
+        if ((Test-Path -LiteralPath $p) -and (Get-Item -LiteralPath $p).LastWriteTimeUtc -le $headTime) { $suspects += $f }
+    }
+    return $suspects
+}
+
 Push-Location $repo
 try {
+    $corrupted = @(Find-CorruptedSources $repo)
+    if ($corrupted.Count) {
+        throw ("Source files changed on disk without being edited (disk corruption?): {0}. Restore them with: git checkout -- <file>" -f ($corrupted -join ', '))
+    }
     cmake --preset $Preset
     if ($LASTEXITCODE -ne 0) { throw "CMake configure failed ($LASTEXITCODE)" }
     $buildDir = Join-Path $repo "build\$Preset"

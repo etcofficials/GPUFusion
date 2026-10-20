@@ -58,6 +58,22 @@ void queryKernelInfo(DxgiAdapter& a, LUID luid)
     if (D3DKMTQueryAdapterInfo(&q) == 0)
         a.location = PciLocation::fromRaw(address.BusNumber, address.DeviceNumber, address.FunctionNumber);
 
+    D3DKMT_ADAPTERTYPE type{};
+    q.Type = KMTQAITYPE_ADAPTERTYPE;
+    q.pPrivateDriverData = &type;
+    q.PrivateDriverDataSize = sizeof(type);
+    if (D3DKMTQueryAdapterInfo(&q) == 0) {
+        KernelAdapterType k;
+        k.renderSupported = type.RenderSupported;
+        k.displaySupported = type.DisplaySupported;
+        k.softwareDevice = type.SoftwareDevice;
+        k.postDevice = type.PostDevice;
+        k.hybridDiscrete = type.HybridDiscrete;
+        k.hybridIntegrated = type.HybridIntegrated;
+        k.indirectDisplay = type.IndirectDisplayDevice;
+        a.kernelType = k;
+    }
+
     D3DKMT_CLOSEADAPTER close{ open.hAdapter };
     D3DKMTCloseAdapter(&close);
 }
@@ -75,6 +91,10 @@ QList<DisplayOutput> enumerateOutputs(IDXGIAdapter1* adapter)
         o.width = desc.DesktopCoordinates.right - desc.DesktopCoordinates.left;
         o.height = desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top;
         o.attachedToDesktop = desc.AttachedToDesktop;
+        MONITORINFO mi{};
+        mi.cbSize = sizeof(mi);
+        if (desc.Monitor && GetMonitorInfoW(desc.Monitor, &mi))
+            o.primary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
         DISPLAY_DEVICEW monitor{};
         monitor.cb = sizeof(monitor);
         if (EnumDisplayDevicesW(desc.DeviceName, 0, &monitor, 0))

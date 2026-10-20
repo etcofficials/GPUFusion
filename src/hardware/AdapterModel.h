@@ -65,6 +65,21 @@ struct DisplayOutput {
     QString monitor;               // monitor description, if available
     int width = 0, height = 0;
     bool attachedToDesktop = false;
+    bool primary = false;          // the primary display (where the taskbar is by default)
+};
+
+// How the Windows graphics kernel classifies an adapter (D3DKMT KMTQAITYPE_ADAPTERTYPE). Windows'
+// per-app GPU preference ("power saving" / "high performance") relies on this classification, which
+// the driver reports — older drivers report fewer flags.
+struct KernelAdapterType {
+    bool renderSupported = false;
+    bool displaySupported = false;
+    bool softwareDevice = false;
+    bool postDevice = false;       // the adapter the firmware (BIOS/UEFI) used at boot
+    bool hybridDiscrete = false;   // discrete GPU of a Windows-recognised hybrid system
+    bool hybridIntegrated = false; // integrated GPU of a Windows-recognised hybrid system
+    bool indirectDisplay = false;
+    QStringList flags() const;     // names of the set flags, for display
 };
 
 // What DXGI and Direct3D report for one adapter.
@@ -78,6 +93,7 @@ struct DxgiAdapter {
     QString umdVersion;            // user-mode driver version (CheckInterfaceSupport)
     int wddmVersion = 0;           // KMT_DRIVERVERSION value, e.g. 1200, 2300; 0 = unknown
     std::optional<PciLocation> location;
+    std::optional<KernelAdapterType> kernelType; // nullopt: the query was not answered
     D3D11Caps d3d11;
     D3D12Caps d3d12;
     QList<DisplayOutput> outputs;

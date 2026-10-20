@@ -21,6 +21,19 @@ std::optional<PciLocation> PciLocation::fromRaw(quint32 bus, quint32 device, qui
     return PciLocation{ bus, device, function };
 }
 
+QStringList KernelAdapterType::flags() const
+{
+    QStringList out;
+    if (renderSupported) out << QStringLiteral("render");
+    if (displaySupported) out << QStringLiteral("display");
+    if (postDevice) out << QStringLiteral("boot (POST) device");
+    if (hybridDiscrete) out << QStringLiteral("hybrid discrete");
+    if (hybridIntegrated) out << QStringLiteral("hybrid integrated");
+    if (indirectDisplay) out << QStringLiteral("indirect display");
+    if (softwareDevice) out << QStringLiteral("software");
+    return out;
+}
+
 PciIds parsePciInstanceId(const QString& instanceId)
 {
     static const QRegularExpression re(QStringLiteral(R"(^PCI\\VEN_([0-9A-F]{4})&DEV_([0-9A-F]{4})(?:&SUBSYS_([0-9A-F]{8}))?(?:&REV_([0-9A-F]{2}))?)"),
@@ -355,6 +368,19 @@ QList<Finding> findingsFor(const Adapter& a, const QDate& today)
         out << finding(S::Info, QStringLiteral("No display connected"),
                        QStringLiteral("No monitor is attached to this adapter. Anything it renders for the screen has to be copied to a "
                                       "display driven by another adapter."));
+    } else if (std::any_of(d.outputs.begin(), d.outputs.end(), [](const DisplayOutput& o) { return o.primary; })) {
+        out << finding(S::Info, QStringLiteral("Drives the primary display"),
+                       QStringLiteral("Programs that do not choose a GPU themselves normally get the adapter driving the primary display."));
+    }
+    if (d.kernelType) {
+        const KernelAdapterType& k = *d.kernelType;
+        const QString flags = k.flags().isEmpty() ? QStringLiteral("none") : k.flags().join(QStringLiteral(", "));
+        if (!k.hybridDiscrete && !k.hybridIntegrated) {
+            out << finding(S::Info, QStringLiteral("Not part of a Windows hybrid-GPU pair"),
+                           QStringLiteral("Windows classifies this adapter as: %1. Without a hybrid integrated/discrete classification, "
+                                          "Windows' per-app \"Power saving\" / \"High performance\" setting may not move programs between "
+                                          "GPUs — GPU Fusion verifies what it actually does on the GPU Preferences page.").arg(flags));
+        }
     }
     return out;
 }

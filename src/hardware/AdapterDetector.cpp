@@ -27,6 +27,15 @@ QString summarize(const Adapter& a)
             parts << (d.d3d11.device.ok() ? QStringLiteral("D3D11 FL %1").arg(d.d3d11.device.featureLevel) : QStringLiteral("D3D11 failed"));
             parts << (d.d3d12.device.ok() ? QStringLiteral("D3D12 FL %1").arg(d.d3d12.maxFeatureLevel) : QStringLiteral("no D3D12"));
             parts << QStringLiteral("%1 dedicated").arg(formatBytes(d.dedicatedVideoMemory));
+            parts << (d.kernelType ? QStringLiteral("kernel type [%1]").arg(d.kernelType->flags().join(QStringLiteral(", ")))
+                                   : QStringLiteral("kernel type not reported"));
+            int attached = 0;
+            bool primary = false;
+            for (const DisplayOutput& o : d.outputs) {
+                attached += o.attachedToDesktop ? 1 : 0;
+                primary = primary || o.primary;
+            }
+            parts << QStringLiteral("%1 display(s) attached%2").arg(attached).arg(primary ? QStringLiteral(" incl. primary") : QString());
             if (d.capsReused)
                 parts << QStringLiteral("probes reused");
         }
