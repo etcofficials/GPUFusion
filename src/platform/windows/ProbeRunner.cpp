@@ -56,16 +56,22 @@ std::optional<QByteArray> runProbe(const QString& probePath, QString* error, int
 
 bool launchDetached(const QString& exePath, QString* error)
 {
+    return launchDetachedPid(exePath, {}, error).has_value();
+}
+
+std::optional<quint32> launchDetachedPid(const QString& exePath, const QStringList& arguments, QString* error)
+{
     QProcess p;
     p.setProgram(exePath);
+    p.setArguments(arguments);
     p.setWorkingDirectory(QFileInfo(exePath).absolutePath());
     p.setProcessEnvironment(childEnvironment());
     qint64 pid = 0;
     if (!p.startDetached(&pid)) {
         if (error) *error = p.errorString();
-        return false;
+        return std::nullopt;
     }
-    return true;
+    return quint32(pid);
 }
 
 } // namespace gf::pref::win

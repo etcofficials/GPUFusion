@@ -2,6 +2,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QStringList>
 
 #include <optional>
 
@@ -13,5 +14,7 @@ std::optional<QByteArray> runProbe(const QString& probePath, QString* error, int
 
 // Starts an application the user chose, detached, with the user's original environment TEMP.
 bool launchDetached(const QString& exePath, QString* error);
+// The same with arguments; returns the new process id (nullopt on failure).
+std::optional<quint32> launchDetachedPid(const QString& exePath, const QStringList& arguments, QString* error);
 
 } // namespace gf::pref::win

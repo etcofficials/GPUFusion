@@ -21,6 +21,7 @@ QList<ProcessInfo> ProcessList::snapshot()
             continue;
         ProcessInfo p;
         p.pid = pe.th32ProcessID;
+        p.parentPid = pe.th32ParentProcessID;
         p.name = QString::fromWCharArray(pe.szExeFile);
         seen.insert(p.pid);
 

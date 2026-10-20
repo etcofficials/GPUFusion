@@ -25,7 +25,10 @@ target_link_libraries(gpufusion_hardware
 # ---- preferences: Windows per-app GPU preference (model, journal, verification) ---
 add_library(gpufusion_preferences STATIC
     preferences/PreferenceModel.cpp preferences/PreferenceModel.h
+    preferences/DualGpu.cpp preferences/DualGpu.h
+    preferences/GpuSelection.cpp preferences/GpuSelection.h
     preferences/PreferenceService.cpp preferences/PreferenceService.h
+    platform/windows/PeImports.cpp platform/windows/PeImports.h
     platform/windows/ProbeRunner.cpp platform/windows/ProbeRunner.h
     platform/windows/RegistryPreferenceStore.cpp platform/windows/RegistryPreferenceStore.h
 )
@@ -39,6 +42,8 @@ add_library(gpufusion_monitoring STATIC
     monitoring/MonitorWorker.cpp monitoring/MonitorWorker.h
     monitoring/MonitorService.cpp monitoring/MonitorService.h
     monitoring/ProcessModel.cpp monitoring/ProcessModel.h
+    monitoring/UsageObserver.cpp monitoring/UsageObserver.h
+    monitoring/UsageVerification.cpp monitoring/UsageVerification.h
     platform/windows/GpuPreferenceReader.cpp platform/windows/GpuPreferenceReader.h
     platform/windows/KmtProcessProvider.cpp platform/windows/KmtProcessProvider.h
     platform/windows/KmtStatsProvider.cpp platform/windows/KmtStatsProvider.h

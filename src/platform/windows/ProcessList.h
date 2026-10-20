@@ -8,6 +8,7 @@ namespace gf::mon::win {
 
 struct ProcessInfo {
     quint32 pid = 0;
+    quint32 parentPid = 0;    // as recorded at creation; the parent may have exited (and its pid been reused)
     quint64 creationTime = 0; // FILETIME; 0 if unreadable. (pid, creationTime) identifies a process.
     QString name;             // executable name from the process snapshot
     QString path;             // full image path; empty if the process could not be opened

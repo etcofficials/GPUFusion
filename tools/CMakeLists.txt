@@ -1,6 +1,9 @@
 # GPUFusionProbe: harmless helper launched by GPU Fusion to verify GPU preferences (no Qt).
 add_executable(GPUFusionProbe probe/main.cpp)
 target_link_libraries(GPUFusionProbe PRIVATE gpufusion::options dxgi d3d11)
+# --render uses the workload shaders, compiled into headers when gpufusion_workloads is built.
+target_include_directories(GPUFusionProbe PRIVATE "${CMAKE_BINARY_DIR}/generated")
+add_dependencies(GPUFusionProbe gpufusion_workloads)
 # Static CRT: the probe must run even if it is copied on its own.
 set_property(TARGET GPUFusionProbe PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
