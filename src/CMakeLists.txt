@@ -106,6 +106,12 @@ add_library(gpufusion_profiles STATIC
 )
 target_link_libraries(gpufusion_profiles PUBLIC gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options ole32 shell32 uuid)
 
+# ---- dispatch: independent jobs spread over several GPUs (class C), measured comparison ---
+add_library(gpufusion_dispatch STATIC
+    dispatch/JobDispatcher.cpp dispatch/JobDispatcher.h
+)
+target_link_libraries(gpufusion_dispatch PUBLIC gpufusion_benchmarks PRIVATE gpufusion::options)
+
 # ---- diagnostics: report model (pure) + read-only platform checks --------------------
 add_library(gpufusion_diagnostics STATIC
     diagnostics/DiagnosticReport.cpp diagnostics/DiagnosticReport.h
@@ -138,7 +144,7 @@ add_library(gpufusion_ui STATIC
     ui/widgets/LiveText.cpp ui/widgets/LiveText.h
     ui/widgets/MonitorCard.cpp ui/widgets/MonitorCard.h
 )
-target_link_libraries(gpufusion_ui PUBLIC gpufusion_core gpufusion_hardware gpufusion_monitoring gpufusion_diagnostics gpufusion_benchmarks gpufusion_profiles Qt6::Widgets PRIVATE gpufusion::options)
+target_link_libraries(gpufusion_ui PUBLIC gpufusion_core gpufusion_hardware gpufusion_monitoring gpufusion_diagnostics gpufusion_benchmarks gpufusion_profiles gpufusion_dispatch Qt6::Widgets PRIVATE gpufusion::options)
 
 # ---- application -----------------------------------------------------------------
 add_executable(GPUFusion WIN32

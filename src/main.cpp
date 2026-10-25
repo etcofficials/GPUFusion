@@ -12,6 +12,7 @@
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
 #include "diagnostics/DiagnosticReport.h"
+#include "dispatch/JobDispatcher.h"
 #include "ui/DiagnosticsCollector.h"
 #include "ui/AppContext.h"
 #include "ui/MainWindow.h"
@@ -87,8 +88,24 @@ int main(int argc, char* argv[])
     const QCommandLineOption verifyProfileOpt(QStringLiteral("verify-profile"),
         QStringLiteral("Start the program of a GPU profile, verify which GPU it renders on, store the result in the profile and exit "
                        "(0 = the profile's GPU mode was confirmed)."), QStringLiteral("profile"));
+    const QCommandLineOption dispatchOpt(QStringLiteral("dispatch"),
+        QStringLiteral("Run a batch of independent jobs, one per input file, spread over the GPUs: <command> is a command template with "
+                       "placeholders {dxgi_index} {luid} {vendor_id} {vendor_hex} {gpu_name} {input} {output} {stem} {job}, or \"decode\" "
+                       "(built-in H.264 decoding). Exit code 0 only if every job succeeded."), QStringLiteral("command"));
+    const QCommandLineOption dispatchInputsOpt(QStringLiteral("dispatch-inputs"), QStringLiteral("With --dispatch: a folder, or files separated by ';'."),
+                                               QStringLiteral("inputs"));
+    const QCommandLineOption dispatchOutputOpt(QStringLiteral("dispatch-output"), QStringLiteral("With --dispatch: output folder for {output}."),
+                                               QStringLiteral("folder"));
+    const QCommandLineOption dispatchPatternOpt(QStringLiteral("dispatch-pattern"),
+        QStringLiteral("With --dispatch: output file name, e.g. {stem}.mkv ({stem} {name} {ext} {job}); none = jobs write no file."), QStringLiteral("pattern"));
+    const QCommandLineOption dispatchGpusOpt(QStringLiteral("dispatch-gpus"),
+        QStringLiteral("With --dispatch: all (default), integrated, discrete, or DXGI indexes such as 0,1."), QStringLiteral("gpus"), QStringLiteral("all"));
+    const QCommandLineOption dispatchCompareOpt(QStringLiteral("dispatch-compare"),
+        QStringLiteral("With --dispatch: measure the batch <n> times on each GPU alone and on all chosen GPUs, check outputs and report "
+                       "whether all GPUs together are significantly faster."), QStringLiteral("n"));
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
-                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, launchProfileOpt, verifyProfileOpt });
+                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, launchProfileOpt, verifyProfileOpt,
+                     dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
     cli.process(app);
 
     // ---- data location + logging ----------------------------------------------
@@ -269,6 +286,67 @@ int main(int argc, char* argv[])
                         qCInfo(lcApp).noquote() << "    " << d;
                     exitCode = p->lastVerification->confirmed || (p->mode == gf::profiles::GpuMode::Automatic && v.outcome == gf::mon::UsageOutcome::Observed) ? 0 : 8;
                 }
+            }
+            QApplication::exit(exitCode);
+        };
+        if (hardware.isRunning() || !hardware.latest())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
+        else
+            QTimer::singleShot(0, &app, run);
+        app.exec();
+        gf::log::shutdown();
+        return exitCode;
+    }
+
+    if (cli.isSet(dispatchOpt)) {
+        // Headless multi-GPU batch (class C): same dispatcher as the Workload Lab's job panel.
+        int exitCode = 2;
+        auto run = [&] {
+            const QList<gf::dispatch::Worker> workers = gf::dispatch::workersFrom(*hardware.latest());
+            QString error;
+            const auto use = gf::dispatch::selectWorkers(workers, cli.value(dispatchGpusOpt), &error);
+            const QStringList inputs = gf::dispatch::inputFiles(cli.value(dispatchInputsOpt));
+            const QString pattern = cli.value(dispatchPatternOpt);
+            const QString outDir = QDir::toNativeSeparators(QFileInfo(cli.value(dispatchOutputOpt).isEmpty() ? data.tempDir() + QStringLiteral("/dispatch")
+                                                                                                              : cli.value(dispatchOutputOpt)).absoluteFilePath());
+            if (!use || inputs.isEmpty()) {
+                qCCritical(lcApp).noquote() << (use ? QStringLiteral("No input files.") : error);
+                QApplication::exit(2);
+                return;
+            }
+            const QString command = cli.value(dispatchOpt);
+            const gf::dispatch::Executor executor = command.compare(QLatin1StringView("decode"), Qt::CaseInsensitive) == 0
+                ? gf::dispatch::decodeExecutor() : gf::dispatch::commandExecutor(command);
+            QStringList names;
+            for (int w : *use)
+                names << QStringLiteral("%1 (DXGI %2)").arg(workers[w].name).arg(workers[w].dxgiIndex);
+            qCInfo(lcApp).noquote() << "Dispatch:" << inputs.size() << "job(s) on" << names.join(QStringLiteral(", "));
+            const int reps = cli.value(dispatchCompareOpt).toInt();
+            if (cli.isSet(dispatchCompareOpt)) {
+                if (use->size() < 2 || reps < 1) {
+                    qCCritical(lcApp).noquote() << "--dispatch-compare needs at least two GPUs and n >= 1";
+                    QApplication::exit(2);
+                    return;
+                }
+                const gf::dispatch::Experiment e = gf::dispatch::compareConfigurations(
+                    workers, *use, inputs, outDir, pattern, executor, std::min(reps, 50), nullptr,
+                    [](const QString& stage) { qCInfo(lcApp).noquote() << "  " << stage; });
+                for (const gf::dispatch::ConfigResult& c : e.configs)
+                    qCInfo(lcApp).noquote() << QStringLiteral("  %1: %2 runs, mean %3 ms (sd %4)%5").arg(c.label).arg(c.wall.n)
+                                                   .arg(c.wall.mean, 0, 'f', 0).arg(c.wall.stddev, 0, 'f', 0).arg(c.allOk ? QString() : QStringLiteral(", FAILED jobs"));
+                qCInfo(lcApp).noquote() << "Result:" << e.verdict;
+                for (const QString& n : e.notes)
+                    qCInfo(lcApp).noquote() << "  " << n;
+                exitCode = std::all_of(e.configs.begin(), e.configs.end(), [](const gf::dispatch::ConfigResult& c) { return c.allOk; }) ? 0 : 8;
+            } else {
+                const QList<gf::dispatch::Job> jobs = gf::dispatch::jobsFor(inputs, outDir, pattern);
+                const gf::dispatch::RunResult r = gf::dispatch::runJobs(workers, *use, jobs, executor);
+                for (const gf::dispatch::JobResult& j : r.jobs)
+                    qCInfo(lcApp).noquote() << QStringLiteral("  job %1 on %2: %3 in %4 ms%5").arg(j.job).arg(workers.value(j.worker).name,
+                                                   j.ok ? QStringLiteral("ok") : QStringLiteral("FAILED")).arg(j.ms, 0, 'f', 0)
+                                                   .arg(j.ok ? (j.checksum ? QStringLiteral(" (%1)").arg(*j.checksum) : QString()) : QStringLiteral(" — ") + j.error);
+                qCInfo(lcApp).noquote() << QStringLiteral("Dispatch finished in %1 ms, %2 failed").arg(r.wallMs, 0, 'f', 0).arg(r.failed());
+                exitCode = r.failed() == 0 ? 0 : 8;
             }
             QApplication::exit(exitCode);
         };
