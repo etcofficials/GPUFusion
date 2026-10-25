@@ -57,7 +57,7 @@ UsageEvidence observeUsage(const QList<MonitorTarget>& targets, const ObserveOpt
     // Allow for clock granularity: the launched process is created a moment after this.
     const quint64 launchTime = nowFiletime() - 20'000'000ull; // 2 s earlier, in 100 ns units
     QString error;
-    const std::optional<quint32> root = pref::win::launchDetachedPid(options.exe, options.arguments, &error);
+    const std::optional<quint32> root = pref::win::launchDetachedPid(options.exe, options.arguments, &error, options.environment);
     if (!root) {
         e.launchError = error.isEmpty() ? QStringLiteral("The program could not be started.") : error;
         return e;

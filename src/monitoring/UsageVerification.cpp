@@ -73,7 +73,7 @@ UsageVerdict evaluateUsage(const UsageEvidence& e)
     if (!e.preferenceRequired) {
         saved.state = e.storedPreference ? StageState::Failed : StageState::NotApplicable;
         saved.detail = e.storedPreference ? QStringLiteral("A value is still stored (%1) although Windows should decide.").arg(*e.storedPreference)
-                                          : QStringLiteral("Automatic: no preference is stored; Windows decides.");
+                                          : QStringLiteral("No Windows preference is stored for this program.");
     } else if (e.storedPreference) {
         saved.state = StageState::Passed;
         saved.detail = QStringLiteral("Read back from Windows: %1").arg(*e.storedPreference);
@@ -213,7 +213,18 @@ UsageVerdict evaluateUsage(const UsageEvidence& e)
         QSet<quint64> others = rendering;
         others.remove(req);
         const bool reqRenders = rendering.contains(req);
-        if (reqRenders && others.isEmpty()) {
+        // GPU work of unknown type (drivers that do not name engines) on another adapter also means the
+        // program used that adapter, although not necessarily for rendering.
+        QSet<quint64> otherUnnamed = unnamedActive;
+        otherUnnamed.remove(req);
+        otherUnnamed.subtract(others);
+        if (reqRenders && others.isEmpty() && !otherUnnamed.isEmpty()) {
+            v.outcome = UsageOutcome::BothAdapters;
+            confirmed.state = StageState::Inconclusive;
+            confirmed.detail = QStringLiteral("The program rendered on %1 and also did GPU work on %2, whose driver does not report "
+                                              "engine types.").arg(requested, names(otherUnnamed));
+            v.headline = QStringLiteral("Partly: the program used %1 and %2.").arg(requested, names(otherUnnamed));
+        } else if (reqRenders && others.isEmpty()) {
             v.outcome = UsageOutcome::Confirmed;
             confirmed.state = StageState::Passed;
             confirmed.detail = QStringLiteral("3D/compute work of the program's processes ran on %1 and on no other GPU.").arg(requested);

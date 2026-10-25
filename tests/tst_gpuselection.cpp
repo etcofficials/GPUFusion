@@ -231,6 +231,17 @@ private Q_SLOTS:
         QVERIFY(v.details.join(u' ').contains(QStringLiteral("probably a launcher")));
     }
 
+    void unnamedWorkOnTheOtherAdapterCountsAsBoth()
+    {
+        UsageEvidence e = evidence(kNvLuid);
+        addRendering(e, kNvLuid, QStringLiteral("3D"), 45);
+        addRendering(e, kIntelLuid, QStringLiteral("Engine 0"), 90);
+        const UsageVerdict v = evaluateUsage(e);
+        QCOMPARE(v.outcome, UsageOutcome::BothAdapters);
+        QVERIFY(v.stages[3].detail.contains(QStringLiteral("does not report engine types")));
+        QVERIFY(v.headline.startsWith(QStringLiteral("Partly")));
+    }
+
     void notLaunchedAndAlreadyRunningAndNotSaved()
     {
         UsageEvidence e = evidence(kNvLuid);

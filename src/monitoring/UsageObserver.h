@@ -3,6 +3,7 @@
 #include "monitoring/MetricModel.h"
 #include "monitoring/UsageVerification.h"
 
+#include <QHash>
 #include <QStringList>
 
 #include <atomic>
@@ -18,6 +19,7 @@ namespace gf::mon {
 struct ObserveOptions {
     QString exe;
     QStringList arguments;
+    QHash<QString, QString> environment;   // extra variables for the launched program
     int seconds = 20;
     int intervalMs = 1000;
 };

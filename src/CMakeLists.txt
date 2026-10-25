@@ -97,6 +97,15 @@ add_library(gpufusion_benchmarks STATIC
 )
 target_link_libraries(gpufusion_benchmarks PUBLIC gpufusion_monitoring gpufusion_preferences gpufusion_workloads PRIVATE gpufusion::options psapi)
 
+# ---- profiles: generic per-application GPU profiles, discovery, apply/launch/verify -------
+add_library(gpufusion_profiles STATIC
+    profiles/AppDiscovery.cpp profiles/AppDiscovery.h
+    profiles/AppProfile.cpp profiles/AppProfile.h
+    profiles/ProfileActions.cpp profiles/ProfileActions.h
+    profiles/ProfileStore.cpp profiles/ProfileStore.h
+)
+target_link_libraries(gpufusion_profiles PUBLIC gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options ole32 shell32 uuid)
+
 # ---- diagnostics: report model (pure) + read-only platform checks --------------------
 add_library(gpufusion_diagnostics STATIC
     diagnostics/DiagnosticReport.cpp diagnostics/DiagnosticReport.h
@@ -128,7 +137,7 @@ add_library(gpufusion_ui STATIC
     ui/widgets/LiveText.cpp ui/widgets/LiveText.h
     ui/widgets/MonitorCard.cpp ui/widgets/MonitorCard.h
 )
-target_link_libraries(gpufusion_ui PUBLIC gpufusion_core gpufusion_hardware gpufusion_monitoring gpufusion_diagnostics gpufusion_benchmarks Qt6::Widgets PRIVATE gpufusion::options)
+target_link_libraries(gpufusion_ui PUBLIC gpufusion_core gpufusion_hardware gpufusion_monitoring gpufusion_diagnostics gpufusion_benchmarks gpufusion_profiles Qt6::Widgets PRIVATE gpufusion::options)
 
 # ---- application -----------------------------------------------------------------
 add_executable(GPUFusion WIN32

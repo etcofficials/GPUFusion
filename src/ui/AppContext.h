@@ -9,6 +9,7 @@ namespace gf::hw { class HardwareService; }
 namespace gf::mon { class MonitorService; }
 namespace gf::pref { class PreferenceService; }
 namespace gf::bench { class BenchmarkService; }
+namespace gf::profiles { class ProfileStore; }
 
 namespace gf::ui {
 
@@ -18,14 +19,16 @@ class AppContext : public QObject {
 public:
     AppContext(DataLocation data, SettingsStore* store, SettingsStore::LoadResult loaded,
                hw::HardwareService* hardware, mon::MonitorService* monitor, pref::PreferenceService* preferences,
-               bench::BenchmarkService* benchmarks = nullptr, bench::BenchmarkService* lab = nullptr);
+               bench::BenchmarkService* benchmarks = nullptr, bench::BenchmarkService* lab = nullptr,
+               profiles::ProfileStore* profiles = nullptr);
 
     const DataLocation& data() const { return m_data; }
     hw::HardwareService& hardware() { return *m_hardware; }
     mon::MonitorService& monitor() { return *m_monitor; }
     pref::PreferenceService& preferences() { return *m_preferences; }
     bench::BenchmarkService* benchmarks() { return m_benchmarks; } // null where benchmarking is not offered (tests)
-    bench::BenchmarkService* lab() { return m_lab; }               // Workload Lab sessions; null in tests that do not need it
+    bench::BenchmarkService* lab() { return m_lab; }
+    profiles::ProfileStore* profiles() { return m_profiles; }         // null in tests that do not need it               // Workload Lab sessions; null in tests that do not need it
     SettingsStore& store() { return *m_store; }
     const Settings& settings() const { return m_settings; }
     const SettingsStore::LoadResult& loadResult() const { return m_loaded; }
@@ -49,6 +52,7 @@ private:
     pref::PreferenceService* m_preferences;
     bench::BenchmarkService* m_benchmarks;
     bench::BenchmarkService* m_lab;
+    profiles::ProfileStore* m_profiles;
 };
 
 } // namespace gf::ui

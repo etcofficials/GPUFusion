@@ -1,0 +1,126 @@
+#include "profiles/ProfileStore.h"
+
+#include <QCollator>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QRegularExpression>
+#include <QSaveFile>
+#include <QVersionNumber>
+
+#include <algorithm>
+
+namespace gf::profiles {
+
+ProfileStore::ProfileStore(QString directory) : m_dir(std::move(directory)) {}
+
+QString ProfileStore::pathFor(const QString& id) const
+{
+    return QDir(m_dir).filePath(id + QStringLiteral(".json"));
+}
+
+QList<AppProfile> ProfileStore::list() const
+{
+    QList<AppProfile> out;
+    for (const QFileInfo& fi : QDir(m_dir).entryInfoList({ QStringLiteral("*.json") }, QDir::Files)) {
+        QFile f(fi.absoluteFilePath());
+        if (!f.open(QIODevice::ReadOnly))
+            continue;
+        if (auto p = AppProfile::fromJson(QJsonDocument::fromJson(f.readAll()).object()))
+            out << *p;
+    }
+    QCollator collator;
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    std::sort(out.begin(), out.end(), [&](const AppProfile& a, const AppProfile& b) { return collator.compare(a.name, b.name) < 0; });
+    return out;
+}
+
+std::optional<AppProfile> ProfileStore::find(const QString& idOrExe) const
+{
+    const QString id = idOrExe.contains(u'\\') || idOrExe.contains(u'/') ? profileIdFor(idOrExe) : idOrExe;
+    QFile f(pathFor(id));
+    if (!f.open(QIODevice::ReadOnly))
+        return std::nullopt;
+    return AppProfile::fromJson(QJsonDocument::fromJson(f.readAll()).object());
+}
+
+bool ProfileStore::save(AppProfile& p, QString* error)
+{
+    if (p.exePath.isEmpty()) {
+        if (error) *error = QStringLiteral("The profile has no executable.");
+        return false;
+    }
+    p.exePath = QDir::toNativeSeparators(QFileInfo(p.exePath).absoluteFilePath());
+    p.id = profileIdFor(p.exePath);
+    const QDateTime now = QDateTime::currentDateTime();
+    if (!p.created.isValid())
+        p.created = now;
+    p.modified = now;
+    if (!QDir().mkpath(m_dir)) {
+        if (error) *error = QStringLiteral("Cannot create %1").arg(QDir::toNativeSeparators(m_dir));
+        return false;
+    }
+    QSaveFile f(pathFor(p.id));
+    if (!f.open(QIODevice::WriteOnly)) {
+        if (error) *error = f.errorString();
+        return false;
+    }
+    f.write(QJsonDocument(p.toJson()).toJson(QJsonDocument::Indented));
+    if (!f.commit()) {
+        if (error) *error = f.errorString();
+        return false;
+    }
+    return true;
+}
+
+bool ProfileStore::remove(const QString& id, QString* error)
+{
+    QFile f(pathFor(id));
+    if (!f.exists())
+        return true;
+    if (!f.remove()) {
+        if (error) *error = f.errorString();
+        return false;
+    }
+    return true;
+}
+
+QString resolveCurrentExecutable(const QString& exePath)
+{
+    const QFileInfo exe(exePath);
+    const QDir versionDir = exe.absoluteDir();
+    static const QRegularExpression versioned(QStringLiteral(R"(^(?:app-)?(\d+(?:\.\d+){1,3})$)"), QRegularExpression::CaseInsensitiveOption);
+    const auto mine = versioned.match(versionDir.dirName());
+    if (!mine.hasMatch())
+        return exePath;
+    QDir parent = versionDir;
+    if (!parent.cdUp())
+        return exePath;
+    const QString prefix = versionDir.dirName().startsWith(QLatin1StringView("app-"), Qt::CaseInsensitive) ? QStringLiteral("app-") : QString();
+    QVersionNumber best = QVersionNumber::fromString(mine.captured(1));
+    QString bestPath = exePath;
+    for (const QFileInfo& sibling : parent.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        const auto m = versioned.match(sibling.fileName());
+        if (!m.hasMatch() || !sibling.fileName().startsWith(prefix, Qt::CaseInsensitive))
+            continue;
+        const QVersionNumber v = QVersionNumber::fromString(m.captured(1));
+        const QString candidate = QDir(sibling.absoluteFilePath()).filePath(exe.fileName());
+        if (v > best && QFileInfo::exists(candidate)) {
+            best = v;
+            bestPath = QDir::toNativeSeparators(candidate);
+        }
+    }
+    return bestPath;
+}
+
+AppProfile newProfile(const QString& exePath, const QString& name)
+{
+    AppProfile p;
+    p.exePath = QDir::toNativeSeparators(QFileInfo(exePath).absoluteFilePath());
+    p.id = profileIdFor(p.exePath);
+    p.name = name.isEmpty() ? QFileInfo(exePath).completeBaseName() : name;
+    return p;
+}
+
+} // namespace gf::profiles

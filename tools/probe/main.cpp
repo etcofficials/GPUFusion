@@ -22,6 +22,11 @@
 #include <string>
 #include <cwchar>
 
+#include <thread>
+#include <vector>
+
+#include <gpufusion/gpufusion.h> // the GPU Fusion SDK (sdk/include)
+
 // The workload shaders, compiled at build time (see src/CMakeLists.txt).
 #include "shaders/fullscreen_vs.h"
 #include "shaders/hash_ps.h"
@@ -195,6 +200,15 @@ int wmain(int argc, wchar_t** argv)
             return 3;
         }
     }
+    // Reference integration of the GPU Fusion SDK: launched from a GPU Fusion profile, use the adapters
+    // the profile chose (several in "Both" mode); otherwise behave like any program (default adapter).
+    std::vector<ComPtr<IDXGIAdapter1>> sdkAdapters;
+    if (!chosen && !gpufusion::requestedLuids().empty()) {
+        sdkAdapters = gpufusion::adapters(factory.Get());
+        if (!sdkAdapters.empty())
+            chosen = sdkAdapters.front();
+        json += std::string(",\"sdk\":{\"mode\":") + std::to_string(int(gpufusion::mode())) + ",\"adapters\":" + std::to_string(sdkAdapters.size()) + "}";
+    }
     ComPtr<ID3D11Device> device;
     D3D_FEATURE_LEVEL fl{};
     const HRESULT hr = D3D11CreateDevice(chosen.Get(), chosen ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0,
@@ -208,9 +222,30 @@ int wmain(int argc, wchar_t** argv)
         snprintf(flText, sizeof flText, "%u_%u", (fl >> 12) & 0xFu, (fl >> 8) & 0xFu);
         json += std::string(",\"featureLevel\":\"") + flText + "\"";
         if (renderSeconds > 0) {
+            // "Both" via the SDK: the same independent rendering work on every additional requested
+            // adapter at the same time (each GPU does its own share; nothing is split within a frame).
+            std::vector<ComPtr<ID3D11Device>> extraDevices;
+            if (gpufusion::mode() == gpufusion::Mode::Both) {
+                for (size_t i = 1; i < sdkAdapters.size(); ++i) {
+                    ComPtr<ID3D11Device> d;
+                    if (SUCCEEDED(D3D11CreateDevice(sdkAdapters[i].Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &d, nullptr, nullptr)))
+                        extraDevices.push_back(d);
+                }
+            }
+            std::vector<long long> extraDraws(extraDevices.size(), 0);
+            std::vector<std::thread> threads;
+            for (size_t i = 0; i < extraDevices.size(); ++i)
+                threads.emplace_back([&, i] {
+                    std::string ignored;
+                    extraDraws[i] = render(extraDevices[i].Get(), renderSeconds, &ignored);
+                });
             std::string error;
             const long long draws = render(device.Get(), renderSeconds, &error);
+            for (std::thread& t : threads)
+                t.join();
             json += ",\"render\":{\"seconds\":" + std::to_string(renderSeconds) + ",\"draws\":" + std::to_string(draws);
+            for (size_t i = 0; i < extraDraws.size(); ++i)
+                json += ",\"drawsAdapter" + std::to_string(i + 2) + "\":" + std::to_string(extraDraws[i]);
             if (!error.empty())
                 json += ",\"error\":\"" + escape(error) + "\"";
             json += "}";

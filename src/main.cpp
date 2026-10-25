@@ -9,6 +9,8 @@
 #include "monitoring/MonitorService.h"
 #include "monitoring/UsageObserver.h"
 #include "preferences/PreferenceService.h"
+#include "profiles/ProfileActions.h"
+#include "profiles/ProfileStore.h"
 #include "diagnostics/DiagnosticReport.h"
 #include "ui/DiagnosticsCollector.h"
 #include "ui/AppContext.h"
@@ -74,8 +76,19 @@ int main(int argc, char* argv[])
         QStringLiteral("exe"));
     const QCommandLineOption verifySecondsOpt(QStringLiteral("verify-seconds"), QStringLiteral("With --verify-app: how long to watch (default 20)."),
                                               QStringLiteral("seconds"), QStringLiteral("20"));
+    const QCommandLineOption applyProfileOpt(QStringLiteral("apply-profile"),
+        QStringLiteral("Create or update the GPU profile of <exe> with --mode, apply it and exit."), QStringLiteral("exe"));
+    const QCommandLineOption modeOpt(QStringLiteral("mode"), QStringLiteral("With --apply-profile: automatic, integrated, discrete or both."),
+                                     QStringLiteral("mode"));
+    const QCommandLineOption profileArgsOpt(QStringLiteral("profile-args"), QStringLiteral("With --apply-profile: launch arguments stored in the profile."),
+                                            QStringLiteral("arguments"));
+    const QCommandLineOption launchProfileOpt(QStringLiteral("launch-profile"),
+        QStringLiteral("Start the program of a GPU profile (<exe> or profile id) with its arguments and GPU choice, and exit."), QStringLiteral("profile"));
+    const QCommandLineOption verifyProfileOpt(QStringLiteral("verify-profile"),
+        QStringLiteral("Start the program of a GPU profile, verify which GPU it renders on, store the result in the profile and exit "
+                       "(0 = the profile's GPU mode was confirmed)."), QStringLiteral("profile"));
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
-                     verifyAppOpt, verifySecondsOpt });
+                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, launchProfileOpt, verifyProfileOpt });
     cli.process(app);
 
     // ---- data location + logging ----------------------------------------------
@@ -158,7 +171,8 @@ int main(int argc, char* argv[])
 
     gf::bench::BenchmarkService benchmarks(data.benchmarksDir());
     gf::bench::BenchmarkService lab(gf::bench::labDir(data.benchmarksDir()));
-    gf::ui::AppContext context(data, &store, std::move(loaded), &hardware, &monitor, &preferences, &benchmarks, &lab);
+    gf::profiles::ProfileStore profileStore(QDir(data.configDir()).filePath(QStringLiteral("profiles")));
+    gf::ui::AppContext context(data, &store, std::move(loaded), &hardware, &monitor, &preferences, &benchmarks, &lab, &profileStore);
     QObject::connect(&context, &gf::ui::AppContext::settingsChanged, &app, [&app, &monitor](const gf::Settings& s) {
         applyLoggingSettings(s);
         gf::ui::applyTheme(app, s.theme);
@@ -201,6 +215,72 @@ int main(int argc, char* argv[])
         const int code = app.exec();
         gf::log::shutdown();
         return code;
+    }
+
+    if (cli.isSet(applyProfileOpt) || cli.isSet(launchProfileOpt) || cli.isSet(verifyProfileOpt)) {
+        // Headless profile operations: same store, apply/launch/verify code as the GPU Manager page.
+        int exitCode = 2;
+        auto run = [&] {
+            const gf::hw::DetectionResult detection = *hardware.latest();
+            const QList<gf::pref::SelectableGpu> gpus = gf::profiles::selectableGpus(detection);
+            QString error;
+            if (cli.isSet(applyProfileOpt)) {
+                const QString exe = QDir::toNativeSeparators(QFileInfo(cli.value(applyProfileOpt)).absoluteFilePath());
+                const auto mode = gf::profiles::modeFromKey(cli.value(modeOpt).toLower());
+                if (!QFileInfo::exists(exe) || !mode) {
+                    qCCritical(lcApp).noquote() << "Use --apply-profile <existing exe> --mode automatic|integrated|discrete|both";
+                    QApplication::exit(2);
+                    return;
+                }
+                gf::profiles::AppProfile p = profileStore.find(exe).value_or(gf::profiles::newProfile(exe));
+                p.mode = *mode;
+                if (cli.isSet(profileArgsOpt))
+                    p.arguments = cli.value(profileArgsOpt);
+                gf::profiles::CapabilityInputs in;
+                in.gpus = gpus;
+                in.probeVerification = preferences.lastVerification();
+                const gf::profiles::ApplyResult r = gf::profiles::applyProfile(p, preferences.manager(), in);
+                if (r.ok && profileStore.save(p, &error)) {
+                    qCInfo(lcApp).noquote() << "Profile" << p.id << "(" << p.name << ")" << gf::profiles::modeKey(p.mode) << ":" << r.message;
+                    exitCode = 0;
+                } else {
+                    qCCritical(lcApp).noquote() << "Profile not applied:" << (r.ok ? error : r.message);
+                    exitCode = 9;
+                }
+            } else {
+                const QString key = cli.isSet(launchProfileOpt) ? cli.value(launchProfileOpt) : cli.value(verifyProfileOpt);
+                auto p = profileStore.find(key);
+                if (!p) {
+                    qCCritical(lcApp).noquote() << "No GPU profile for" << key;
+                    QApplication::exit(2);
+                    return;
+                }
+                if (cli.isSet(launchProfileOpt)) {
+                    const auto pid = gf::profiles::launchProfile(*p, gpus, &error);
+                    qCInfo(lcApp).noquote() << "Launch profile" << p->name << (pid ? QStringLiteral("pid %1").arg(*pid) : error);
+                    exitCode = pid ? 0 : 9;
+                } else {
+                    const int seconds = std::clamp(cli.value(verifySecondsOpt).toInt(), 3, 600);
+                    const gf::mon::UsageVerdict v = gf::profiles::verifyProfile(*p, detection, preferences.manager().rawValue(
+                                                                                    gf::profiles::resolveCurrentExecutable(p->exePath)), seconds);
+                    profileStore.save(*p, &error);
+                    qCInfo(lcApp).noquote() << "Verify profile" << p->name << gf::profiles::modeKey(p->mode) << ":" << v.headline;
+                    for (const QString& s : p->lastVerification->stages)
+                        qCInfo(lcApp).noquote() << "    " << s;
+                    for (const QString& d : v.details)
+                        qCInfo(lcApp).noquote() << "    " << d;
+                    exitCode = p->lastVerification->confirmed || (p->mode == gf::profiles::GpuMode::Automatic && v.outcome == gf::mon::UsageOutcome::Observed) ? 0 : 8;
+                }
+            }
+            QApplication::exit(exitCode);
+        };
+        if (hardware.isRunning() || !hardware.latest())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
+        else
+            QTimer::singleShot(0, &app, run);
+        app.exec();
+        gf::log::shutdown();
+        return exitCode;
     }
 
     if (cli.isSet(verifyAppOpt)) {

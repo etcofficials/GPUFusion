@@ -59,13 +59,17 @@ bool launchDetached(const QString& exePath, QString* error)
     return launchDetachedPid(exePath, {}, error).has_value();
 }
 
-std::optional<quint32> launchDetachedPid(const QString& exePath, const QStringList& arguments, QString* error)
+std::optional<quint32> launchDetachedPid(const QString& exePath, const QStringList& arguments, QString* error,
+                                         const QHash<QString, QString>& extraEnvironment)
 {
     QProcess p;
     p.setProgram(exePath);
     p.setArguments(arguments);
     p.setWorkingDirectory(QFileInfo(exePath).absolutePath());
-    p.setProcessEnvironment(childEnvironment());
+    QProcessEnvironment env = childEnvironment();
+    for (auto it = extraEnvironment.begin(); it != extraEnvironment.end(); ++it)
+        env.insert(it.key(), it.value());
+    p.setProcessEnvironment(env);
     qint64 pid = 0;
     if (!p.startDetached(&pid)) {
         if (error) *error = p.errorString();

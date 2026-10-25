@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QHash>
 #include <QString>
 #include <QStringList>
 
@@ -14,7 +15,9 @@ std::optional<QByteArray> runProbe(const QString& probePath, QString* error, int
 
 // Starts an application the user chose, detached, with the user's original environment TEMP.
 bool launchDetached(const QString& exePath, QString* error);
-// The same with arguments; returns the new process id (nullopt on failure).
-std::optional<quint32> launchDetachedPid(const QString& exePath, const QStringList& arguments, QString* error);
+// The same with arguments and optional extra environment variables (e.g. GPUFUSION_ADAPTERS for
+// SDK-integrated programs); returns the new process id (nullopt on failure).
+std::optional<quint32> launchDetachedPid(const QString& exePath, const QStringList& arguments, QString* error,
+                                         const QHash<QString, QString>& extraEnvironment = {});
 
 } // namespace gf::pref::win

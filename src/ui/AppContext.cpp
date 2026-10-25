@@ -6,9 +6,9 @@ namespace gf::ui {
 
 AppContext::AppContext(DataLocation data, SettingsStore* store, SettingsStore::LoadResult loaded,
                        hw::HardwareService* hardware, mon::MonitorService* monitor, pref::PreferenceService* preferences,
-                       bench::BenchmarkService* benchmarks, bench::BenchmarkService* lab)
+                       bench::BenchmarkService* benchmarks, bench::BenchmarkService* lab, profiles::ProfileStore* profiles)
     : m_data(std::move(data)), m_store(store), m_loaded(std::move(loaded)), m_settings(m_loaded.settings),
-      m_hardware(hardware), m_monitor(monitor), m_preferences(preferences), m_benchmarks(benchmarks), m_lab(lab)
+      m_hardware(hardware), m_monitor(monitor), m_preferences(preferences), m_benchmarks(benchmarks), m_lab(lab), m_profiles(profiles)
 {
 }
 

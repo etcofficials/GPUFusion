@@ -71,6 +71,8 @@ set_tests_properties(tst_benchmarks_ui PROPERTIES TIMEOUT 300)
 gpufusion_add_test(tst_labmodel tst_labmodel.cpp LABELS unit)
 target_link_libraries(tst_labmodel PRIVATE gpufusion_benchmarks)
 gpufusion_add_test(tst_gpuselection tst_gpuselection.cpp LABELS unit)
+gpufusion_add_test(tst_profiles tst_profiles.cpp LABELS unit)
+target_link_libraries(tst_profiles PRIVATE gpufusion_profiles)
 # Real per-application verification with the probe as the application; changes (and restores) only
 # the probe's own preference, so it shares the cleanup fixture with tst_preferences_live.
 gpufusion_add_test(tst_appverify_live tst_appverify_live.cpp LABELS hardware registry)
