@@ -13,6 +13,12 @@ namespace gf::pref { class PreferenceManager; }
 namespace gf::profiles {
 
 QList<pref::SelectableGpu> selectableGpus(const hw::DetectionResult& detection);
+pref::MultiGpuSystem multiGpuSystem(const hw::DetectionResult& detection, const std::optional<pref::VerificationResult>& probeVerification);
+
+// Everything assessMode needs for one executable: this PC's GPUs, what the Windows preference does
+// here (probe verification, if run), and the dual-GPU assessment of the program (from its imports).
+CapabilityInputs capabilityInputs(const QString& exePath, const hw::DetectionResult& detection,
+                                  const std::optional<pref::VerificationResult>& probeVerification);
 
 struct ApplyResult {
     bool ok = false;

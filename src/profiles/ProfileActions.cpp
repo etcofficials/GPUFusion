@@ -1,6 +1,7 @@
 #include "profiles/ProfileActions.h"
 
 #include "core/Logging.h"
+#include "platform/windows/PeImports.h"
 #include "platform/windows/ProbeRunner.h"
 #include "preferences/PreferenceModel.h"
 #include "profiles/ProfileStore.h"
@@ -8,6 +9,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QProcess>
+#include <QSet>
 
 namespace gf::profiles {
 
@@ -23,6 +25,38 @@ QList<pref::SelectableGpu> selectableGpus(const hw::DetectionResult& detection)
         out << pref::SelectableGpu{ a.name(), a.dxgi->vendorId, hw::formatLuid(a.dxgi->luid), a.classification.value == hw::AdapterClass::Integrated };
     }
     return out;
+}
+
+pref::MultiGpuSystem multiGpuSystem(const hw::DetectionResult& detection, const std::optional<pref::VerificationResult>& probeVerification)
+{
+    pref::MultiGpuSystem s;
+    QSet<quint32> vendors;
+    for (const hw::Adapter& a : detection.adapters) {
+        if (!a.dxgi || a.isSoftware())
+            continue;
+        ++s.physicalGpus;
+        vendors.insert(a.dxgi->vendorId);
+        if (a.dxgi->d3d12.device.ok())
+            ++s.d3d12Gpus;
+        else
+            s.gpusWithoutD3D12 << a.name();
+    }
+    s.sameVendor = vendors.size() == 1;
+    s.preferenceMovesApps = probeVerification && probeVerification->restored && !probeVerification->preferenceHasNoEffect();
+    return s;
+}
+
+CapabilityInputs capabilityInputs(const QString& exePath, const hw::DetectionResult& detection,
+                                  const std::optional<pref::VerificationResult>& probeVerification)
+{
+    CapabilityInputs in;
+    in.gpus = selectableGpus(detection);
+    in.probeVerification = probeVerification;
+    const QString exe = resolveCurrentExecutable(exePath);
+    QString error;
+    const auto imports = pref::win::readImports(exe, &error);
+    in.dualGpu = pref::assessDualGpu(QFileInfo(exe).fileName(), imports, error, multiGpuSystem(detection, probeVerification));
+    return in;
 }
 
 ApplyResult applyProfile(AppProfile& profile, pref::PreferenceManager& manager, const CapabilityInputs& inputs)
@@ -112,7 +146,8 @@ mon::UsageVerdict evaluateProfileEvidence(mon::UsageEvidence e, GpuMode mode, co
         record->headline = v.headline;
         record->stages.clear();
         for (const mon::UsageStage& s : v.stages)
-            record->stages << QStringLiteral("%1: %2 — %3").arg(s.name, mon::stageStateText(s.state), s.detail);
+            record->stages << (s.detail.isEmpty() ? QStringLiteral("%1: %2").arg(s.name, mon::stageStateText(s.state))
+                                                  : QStringLiteral("%1: %2 — %3").arg(s.name, mon::stageStateText(s.state), s.detail));
         record->renderingExecutables = v.renderingExecutables;
         switch (v.outcome) {
         case mon::UsageOutcome::Confirmed:        record->outcome = QStringLiteral("confirmed"); break;

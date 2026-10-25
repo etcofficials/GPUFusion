@@ -8,6 +8,7 @@
 #include "ui/pages/BenchmarksPage.h"
 #include "ui/pages/DashboardPage.h"
 #include "ui/pages/DiagnosticsPage.h"
+#include "ui/pages/GpuManagerPage.h"
 #include "ui/pages/GpusPage.h"
 #include "ui/pages/PlaceholderPage.h"
 #include "ui/pages/PreferencesPage.h"
@@ -81,6 +82,8 @@ MainWindow::MainWindow(AppContext& context, QWidget* parent) : QMainWindow(paren
             new GpusPage(m_context));
     addPage({ QStringLiteral("applications"), tr("Applications"), tr("Which processes use which GPU, per process. Adapter-wide totals are on the Dashboard.") },
             new ApplicationsPage(m_context));
+    addPage({ QStringLiteral("manager"), tr("GPU Manager"), tr("A GPU profile for any program: choose its GPU, apply, launch and verify what it really uses.") },
+            new GpuManagerPage(m_context));
     addPage({ QStringLiteral("preferences"), tr("GPU Preferences"), tr("The Windows per-app graphics preference — what it does here, and changing it safely.") },
             new PreferencesPage(m_context));
     addPage({ QStringLiteral("workloads"), tr("Workload Lab"), tr("Can both GPUs make one job faster? Measured experiments, compared with the best single device.") },
@@ -127,7 +130,7 @@ void MainWindow::onPageSelected(int index)
 
 QStringList MainWindow::pageIds()
 {
-    return { QStringLiteral("dashboard"), QStringLiteral("gpus"), QStringLiteral("applications"), QStringLiteral("preferences"),
+    return { QStringLiteral("dashboard"), QStringLiteral("gpus"), QStringLiteral("applications"), QStringLiteral("manager"), QStringLiteral("preferences"),
              QStringLiteral("workloads"), QStringLiteral("benchmarks"), QStringLiteral("diagnostics"), QStringLiteral("settings") };
 }
 

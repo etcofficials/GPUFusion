@@ -236,9 +236,7 @@ int main(int argc, char* argv[])
                 p.mode = *mode;
                 if (cli.isSet(profileArgsOpt))
                     p.arguments = cli.value(profileArgsOpt);
-                gf::profiles::CapabilityInputs in;
-                in.gpus = gpus;
-                in.probeVerification = preferences.lastVerification();
+                const gf::profiles::CapabilityInputs in = gf::profiles::capabilityInputs(exe, detection, preferences.lastVerification());
                 const gf::profiles::ApplyResult r = gf::profiles::applyProfile(p, preferences.manager(), in);
                 if (r.ok && profileStore.save(p, &error)) {
                     qCInfo(lcApp).noquote() << "Profile" << p.id << "(" << p.name << ")" << gf::profiles::modeKey(p.mode) << ":" << r.message;

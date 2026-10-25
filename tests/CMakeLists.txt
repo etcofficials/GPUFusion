@@ -83,3 +83,7 @@ gpufusion_add_test(tst_profiles_live tst_profiles_live.cpp LABELS hardware regis
 target_link_libraries(tst_profiles_live PRIVATE gpufusion_profiles)
 add_dependencies(tst_profiles_live GPUFusionProbe)
 set_tests_properties(tst_profiles_live PROPERTIES FIXTURES_REQUIRED probe_preference RUN_SERIAL TRUE TIMEOUT 240)
+gpufusion_add_test(tst_gpumanager_ui tst_gpumanager_ui.cpp LABELS hardware registry)
+target_link_libraries(tst_gpumanager_ui PRIVATE gpufusion_ui)
+add_dependencies(tst_gpumanager_ui GPUFusionProbe)
+set_tests_properties(tst_gpumanager_ui PROPERTIES FIXTURES_REQUIRED probe_preference RUN_SERIAL TRUE TIMEOUT 180)

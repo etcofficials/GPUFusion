@@ -125,6 +125,7 @@ add_library(gpufusion_ui STATIC
     ui/pages/BenchmarksPage.cpp ui/pages/BenchmarksPage.h
     ui/pages/DashboardPage.cpp ui/pages/DashboardPage.h
     ui/pages/DiagnosticsPage.cpp ui/pages/DiagnosticsPage.h
+    ui/pages/GpuManagerPage.cpp ui/pages/GpuManagerPage.h
     ui/pages/GpusPage.cpp ui/pages/GpusPage.h
     ui/pages/PlaceholderPage.cpp ui/pages/PlaceholderPage.h
     ui/pages/PreferencesPage.cpp ui/pages/PreferencesPage.h
