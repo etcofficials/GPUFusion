@@ -101,6 +101,30 @@ private Q_SLOTS:
             QCOMPARE(r.jobs[j].job, j);
     }
 
+    // A much slower GPU must not take the last jobs when the faster one would finish them all sooner.
+    void stragglersAreAvoided()
+    {
+        QVERIFY(shouldTakeJob(30, 10, 3));   // 30 ms <= 3 jobs x 10 ms
+        QVERIFY(!shouldTakeJob(30, 10, 2));  // the fast GPU finishes both in 20 ms
+        QVERIFY(shouldTakeJob(30, 0, 1));    // nothing known about the others yet
+        QVERIFY(shouldTakeJob(0, 10, 1));    // nothing known about this worker yet
+
+        const Executor executor = [](const Job&, const Worker& w, const std::atomic<bool>*) {
+            QThread::msleep(w.integrated ? 10 : 60);
+            JobResult r;
+            r.ok = true;
+            return r;
+        };
+        const QMap<int, double> expected{ { 0, 60.0 }, { 1, 10.0 } }; // measured alone
+        const RunResult r = runJobs(kWorkers, { 0, 1 }, jobsFor({ "a", "b", "c" }, {}, {}), executor, nullptr, {}, expected);
+        QCOMPARE(r.failed(), 0);
+        QCOMPARE(r.jobsPerWorker().value(0), 0); // 60 ms > 3 x 10 ms: the slow GPU stays out
+        QCOMPARE(r.jobsPerWorker().value(1), 3);
+
+        const RunResult same = runJobs(kWorkers, { 1, 1 }, jobsFor({ "a", "b", "c", "d" }, {}, {}), executor, nullptr, {}, expected);
+        QCOMPARE(same.failed(), 0); // two slots of the same GPU never hold each other back
+    }
+
     void cancellationStopsTakingJobs()
     {
         std::atomic<bool> cancel{ false };

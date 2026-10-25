@@ -141,6 +141,7 @@ add_library(gpufusion_ui STATIC
     ui/widgets/BarChart.cpp ui/widgets/BarChart.h
     ui/widgets/Card.cpp ui/widgets/Card.h
     ui/widgets/HistoryGraph.cpp ui/widgets/HistoryGraph.h
+    ui/widgets/JobBatchPanel.cpp ui/widgets/JobBatchPanel.h
     ui/widgets/LiveText.cpp ui/widgets/LiveText.h
     ui/widgets/MonitorCard.cpp ui/widgets/MonitorCard.h
 )

@@ -21,6 +21,8 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+
+#include "ui/widgets/JobBatchPanel.h"
 #include <QTableWidget>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -116,6 +118,7 @@ WorkloadLabPage::WorkloadLabPage(AppContext& context, QWidget* parent) : QWidget
         tr("A 10-second 1280 × 720 H.264 test video (created once with Windows' software encoder, about 5 MB in the data folder) is "
            "decoded as fast as possible: one stream on each decoder, two streams on the same GPU, and one stream on each GPU at once. "
            "Every decoder's frames are first compared with the software decoder's — H.264 decoding is exact, so they must be identical."), nullptr));
+    layout->addWidget(new JobBatchPanel(m_context));
     layout->addStretch(1);
 
     connect(folder, &QPushButton::clicked, this, [this] {

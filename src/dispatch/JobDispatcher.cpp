@@ -114,15 +114,26 @@ QMap<int, int> RunResult::jobsPerWorker() const
     return m;
 }
 
+bool shouldTakeJob(double myMs, double fastestOtherMs, int remaining)
+{
+    // Not taking it: the faster worker does all `remaining` jobs one after another.
+    return myMs <= 0 || fastestOtherMs <= 0 || myMs <= remaining * fastestOtherMs;
+}
+
 RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QList<Job>& jobs, const Executor& executor,
-                  const std::atomic<bool>* cancel, const Progress& progress)
+                  const std::atomic<bool>* cancel, const Progress& progress, const QMap<int, double>& expectedJobMs)
 {
     RunResult run;
     run.workers = use;
     run.jobs.resize(jobs.size());
-    std::atomic<int> next{ 0 };
-    std::atomic<int> done{ 0 };
-    std::mutex progressMutex;
+    int next = 0;            // guarded by `mutex`
+    int done = 0;
+    QMap<int, QPair<double, int>> measured; // worker -> (total ms, jobs) in this run
+    std::mutex mutex;
+    auto msPerJob = [&](int w) -> double { // caller holds `mutex`
+        const auto m = measured.value(w);
+        return m.second > 0 ? m.first / m.second : expectedJobMs.value(w, 0);
+    };
     QElapsedTimer timer;
     timer.start();
     std::vector<std::thread> threads;
@@ -131,22 +142,36 @@ RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QLi
             for (;;) {
                 if (cancel && cancel->load())
                     return;
-                const int j = next.fetch_add(1);
-                if (j >= jobs.size())
-                    return;
+                int j = -1;
+                {
+                    std::lock_guard lock(mutex);
+                    if (next >= jobs.size())
+                        return;
+                    double fastestOther = 0;
+                    for (int o : use)
+                        if (o != w && msPerJob(o) > 0 && (fastestOther <= 0 || msPerJob(o) < fastestOther))
+                            fastestOther = msPerJob(o);
+                    if (!shouldTakeJob(msPerJob(w), fastestOther, int(jobs.size()) - next))
+                        return; // remaining jobs only get fewer: this worker is done
+                    j = next++;
+                }
                 QElapsedTimer t;
                 t.start();
                 JobResult r = executor(jobs[j], workers[w], cancel);
                 r.job = j;
                 r.worker = w;
+                const double elapsed = double(t.nsecsElapsed()) / 1e6;
                 if (r.ms <= 0)
-                    r.ms = double(t.nsecsElapsed()) / 1e6;
-                run.jobs[j] = r; // each index is written by exactly one thread
-                const int d = ++done;
-                if (progress) {
-                    std::lock_guard lock(progressMutex);
-                    progress(d, int(jobs.size()));
+                    r.ms = elapsed;
+                std::lock_guard lock(mutex);
+                run.jobs[j] = r;
+                if (r.ok) {
+                    measured[w].first += elapsed;
+                    measured[w].second += 1;
                 }
+                ++done;
+                if (progress)
+                    progress(done, int(jobs.size()));
             }
         });
     }
@@ -301,7 +326,8 @@ Experiment compareConfigurations(const QList<Worker>& workers, const QList<int>&
                                  int repetitions, const std::atomic<bool>* cancel, const std::function<void(const QString&)>& progress)
 {
     Experiment e;
-    auto measure = [&](const QList<int>& set, const QString& label, const QString& sub) {
+    QMap<int, double> expected; // worker -> ms per job, measured on that GPU alone
+    auto measure = [&](const QList<int>& set, const QString& label, const QString& sub, const QMap<int, double>& hint = {}) {
         ConfigResult c;
         c.workers = set;
         c.label = label;
@@ -311,7 +337,7 @@ Experiment compareConfigurations(const QList<Worker>& workers, const QList<int>&
                 break;
             if (progress)
                 progress(QStringLiteral("%1, run %2 of %3").arg(c.label).arg(rep + 1).arg(repetitions));
-            c.runs << runJobs(workers, c.workers, jobs, executor, cancel);
+            c.runs << runJobs(workers, c.workers, jobs, executor, cancel, {}, hint);
         }
         QList<double> walls;
         for (const RunResult& r : c.runs)
@@ -321,8 +347,11 @@ Experiment compareConfigurations(const QList<Worker>& workers, const QList<int>&
         c.allOk = !c.runs.isEmpty() && walls.size() == c.runs.size();
         e.configs << c;
     };
-    for (int w : use)
+    for (int w : use) {
         measure({ w }, QStringLiteral("%1 alone").arg(workers[w].name), QStringLiteral("gpu%1").arg(workers[w].dxgiIndex));
+        if (e.configs.last().allOk && !inputs.isEmpty())
+            expected[w] = e.configs.last().wall.mean / inputs.size();
+    }
     // Control: the fastest GPU alone running as many jobs at once as the multi-GPU run does, so that a
     // gain from running jobs concurrently (CPU work, I/O) is not credited to the second GPU.
     std::optional<int> best;
@@ -334,7 +363,7 @@ Experiment compareConfigurations(const QList<Worker>& workers, const QList<int>&
         measure(QList<int>(use.size(), w), QStringLiteral("%1 alone, %2 jobs at a time").arg(workers[w].name).arg(use.size()),
                 QStringLiteral("gpu%1-concurrent").arg(workers[w].dxgiIndex));
     }
-    measure(use, QStringLiteral("All %1 GPUs").arg(use.size()), QStringLiteral("all-gpus"));
+    measure(use, QStringLiteral("All %1 GPUs").arg(use.size()), QStringLiteral("all-gpus"), expected);
     analyze(e, workers);
     return e;
 }

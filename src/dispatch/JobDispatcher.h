@@ -68,9 +68,17 @@ struct RunResult {
     QMap<int, int> jobsPerWorker() const;
 };
 using Progress = std::function<void(int done, int total)>;
-// Runs every job once on the `use`d workers (one job at a time per worker; dynamic queue).
+// Runs every job once on the `use`d workers (one job at a time per entry; a worker listed twice runs
+// two jobs at once; dynamic queue). Stragglers are avoided: a worker does not take the next job when
+// another GPU would finish all remaining jobs before this worker finished that one — judged from the
+// job times measured so far in this run, or from `expectedJobMs` (worker index -> ms per job, e.g.
+// measured on that GPU alone) until then.
 RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QList<Job>& jobs, const Executor& executor,
-                  const std::atomic<bool>* cancel = nullptr, const Progress& progress = {});
+                  const std::atomic<bool>* cancel = nullptr, const Progress& progress = {},
+                  const QMap<int, double>& expectedJobMs = {});
+// The straggler rule (pure): should a worker that needs `myMs` per job take one of `remaining` jobs
+// when the fastest other worker needs `fastestOtherMs`?
+bool shouldTakeJob(double myMs, double fastestOtherMs, int remaining);
 
 // ---- executors ------------------------------------------------------------------------------------
 
