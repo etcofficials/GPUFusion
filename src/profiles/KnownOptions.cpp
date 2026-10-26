@@ -1,10 +1,12 @@
 #include "profiles/KnownOptions.h"
 
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 
 namespace gf::profiles {
 
@@ -76,6 +78,47 @@ std::optional<KnownGpuOption> knownOptionFor(const QString& exePath, const QList
             if (e.compare(name, Qt::CaseInsensitive) == 0)
                 return o;
     return std::nullopt;
+}
+
+QStringList chromiumRuntimeFiles(const QString& exePath)
+{
+    const QDir dir = QFileInfo(exePath).absoluteDir();
+    auto check = [](const QDir& d) -> QStringList {
+        if (!d.exists(QStringLiteral("icudtl.dat")))
+            return {};
+        for (const QString& snapshot : { QStringLiteral("v8_context_snapshot.bin"), QStringLiteral("snapshot_blob.bin") })
+            if (d.exists(snapshot))
+                return { QDir::toNativeSeparators(d.filePath(QStringLiteral("icudtl.dat"))), QDir::toNativeSeparators(d.filePath(snapshot)) };
+        return {};
+    };
+    if (QStringList f = check(dir); !f.isEmpty())
+        return f;
+    // Chrome / Edge / Brave layout: <app>\<exe> with the runtime in <app>\<version>\.
+    static const QRegularExpression version(QStringLiteral(R"(^\d+(\.\d+){2,3}$)"));
+    for (const QFileInfo& sub : dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
+        if (version.match(sub.fileName()).hasMatch())
+            if (QStringList f = check(QDir(sub.absoluteFilePath())); !f.isEmpty())
+                return f;
+    return {};
+}
+
+std::optional<KnownGpuOption> suggestedOptionFor(const QString& exePath, const QList<KnownGpuOption>& options)
+{
+    if (auto known = knownOptionFor(exePath, options))
+        return known;
+    const QStringList files = chromiumRuntimeFiles(exePath);
+    if (files.isEmpty())
+        return std::nullopt;
+    KnownGpuOption k;
+    k.executables = { QFileInfo(exePath).fileName() };
+    k.program = QStringLiteral("Chromium-based program (detected)");
+    k.arguments = QStringLiteral("--use-adapter-luid={luid_pair}");
+    k.evidence = QStringLiteral("Detected as built on Chromium by its files (%1). The switch was verified with Edge and Brave on the "
+                                "reference PC; not verified with this program — some programs (e.g. Electron apps) may not pass it on.")
+                     .arg(QFileInfo(files.value(1)).fileName());
+    k.caveat = QStringLiteral("If the program is already running, the option has no effect until it is closed and started again from "
+                              "GPU Fusion.");
+    return k;
 }
 
 QString withKnownOption(const QString& arguments, const KnownGpuOption& option)

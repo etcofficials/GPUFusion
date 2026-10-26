@@ -30,6 +30,10 @@ class AppContext;
 class GpuManagerPage : public QWidget {
     Q_OBJECT
 public:
+    // What to do on Launch / Verify when the program is already running: ask (default), ask it to close
+    // (gracefully, never forced), or go on.
+    enum class RunningPolicy { Ask, Close, Continue };
+
     explicit GpuManagerPage(AppContext& context, QWidget* parent = nullptr);
     ~GpuManagerPage() override;
 
@@ -41,6 +45,11 @@ public:
     bool isVerifying() const { return m_thread != nullptr; }
     QString resultText() const;
     QString capabilityText() const;
+    void setRunningPolicy(RunningPolicy p) { m_runningPolicy = p; }
+    // For tests: the known-option suggestion shown for the selected program ("" if none).
+    QString knownOptionText() const;
+    void useKnownOption();
+    void setArguments(const QString& arguments);
 
 Q_SIGNALS:
     void verificationFinished();
@@ -61,6 +70,7 @@ private:
     void refreshKnownOption(const profiles::AppProfile& p);
     bool saveProfile(profiles::AppProfile& p);
     void setBusy(bool busy);
+    bool handleRunning(const QString& exe, const QString& action); // false: do not go on
 
     AppContext& m_context;
     QListWidget* m_list;
@@ -81,14 +91,9 @@ private:
     QPointer<QThread> m_thread;
     std::atomic<bool> m_cancel{ false };
     bool m_loading = false;   // filling the editor from a profile: no change handlers
+    RunningPolicy m_runningPolicy = RunningPolicy::Ask;
     QString m_inputsExe;      // capability inputs cached per executable (imports are read from disk)
     std::optional<profiles::CapabilityInputs> m_inputs;
-
-public:
-    // For tests: the known-option suggestion shown for the selected program ("" if none).
-    QString knownOptionText() const;
-    void useKnownOption();
-    void setArguments(const QString& arguments);
 };
 
 } // namespace gf::ui

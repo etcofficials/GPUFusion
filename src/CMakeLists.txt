@@ -104,8 +104,9 @@ add_library(gpufusion_profiles STATIC
     profiles/KnownOptions.cpp profiles/KnownOptions.h
     profiles/ProfileActions.cpp profiles/ProfileActions.h
     profiles/ProfileStore.cpp profiles/ProfileStore.h
+    profiles/RunningInstances.cpp profiles/RunningInstances.h
 )
-target_link_libraries(gpufusion_profiles PUBLIC gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options ole32 shell32 uuid)
+target_link_libraries(gpufusion_profiles PUBLIC gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options ole32 shell32 uuid user32)
 
 # ---- dispatch: independent jobs spread over several GPUs (class C), measured comparison ---
 add_library(gpufusion_dispatch STATIC

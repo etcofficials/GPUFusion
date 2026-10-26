@@ -29,6 +29,13 @@ QList<KnownGpuOption> builtInKnownOptions();
 // entries in the file are skipped and reported in *problems.
 QList<KnownGpuOption> loadKnownOptions(const QString& userFile, QStringList* problems = nullptr);
 std::optional<KnownGpuOption> knownOptionFor(const QString& exePath, const QList<KnownGpuOption>& options);
+// Whether a program is built on Chromium (browsers, Electron and CEF apps), judged by the runtime files
+// Chromium ships next to the executable or in a version folder beside it (icudtl.dat plus a V8 snapshot).
+// Returns the files that showed it, or an empty list.
+QStringList chromiumRuntimeFiles(const QString& exePath);
+// knownOptionFor by name, else — for programs detected as Chromium-based — the Chromium switch
+// (marked as detected, not verified for that program).
+std::optional<KnownGpuOption> suggestedOptionFor(const QString& exePath, const QList<KnownGpuOption>& options);
 // The arguments with the option put first, unless they already contain it.
 QString withKnownOption(const QString& arguments, const KnownGpuOption& option);
 

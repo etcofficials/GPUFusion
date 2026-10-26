@@ -423,6 +423,40 @@ private Q_SLOTS:
         QVERIFY(!looksLikeHelperExecutable(QStringLiteral("C:\\x\\shotcut.exe")));
     }
 
+    // Chromium-based programs are recognised by their runtime files, in both install layouts.
+    void chromiumProgramsAreDetectedByTheirFiles()
+    {
+        const QString electron = m_dir.filePath(QStringLiteral("electronapp"));           // Electron: files next to the exe
+        touch(electron + QStringLiteral("/ChatApp.exe"));
+        touch(electron + QStringLiteral("/icudtl.dat"));
+        touch(electron + QStringLiteral("/v8_context_snapshot.bin"));
+        QCOMPARE(chromiumRuntimeFiles(electron + QStringLiteral("/ChatApp.exe")).size(), 2);
+
+        const QString browser = m_dir.filePath(QStringLiteral("browser"));                // Chrome layout: runtime in <app>/<version>
+        touch(browser + QStringLiteral("/SomeBrowser.exe"));
+        touch(browser + QStringLiteral("/121.0.6167.85/icudtl.dat"));
+        touch(browser + QStringLiteral("/121.0.6167.85/snapshot_blob.bin"));
+        QVERIFY(chromiumRuntimeFiles(browser + QStringLiteral("/SomeBrowser.exe")).value(1).endsWith(QStringLiteral("snapshot_blob.bin")));
+
+        const QString plain = m_dir.filePath(QStringLiteral("plain"));                    // icudtl alone (e.g. a Qt app) is not enough
+        touch(plain + QStringLiteral("/tool.exe"));
+        touch(plain + QStringLiteral("/icudtl.dat"));
+        QVERIFY(chromiumRuntimeFiles(plain + QStringLiteral("/tool.exe")).isEmpty());
+
+        const QList<KnownGpuOption> builtIn = builtInKnownOptions();
+        const auto detected = suggestedOptionFor(electron + QStringLiteral("/ChatApp.exe"), builtIn);
+        QVERIFY(detected.has_value());
+        QCOMPARE(detected->arguments, QStringLiteral("--use-adapter-luid={luid_pair}"));
+        QVERIFY(detected->evidence.contains(QStringLiteral("not verified with this program")));
+        QVERIFY(!suggestedOptionFor(plain + QStringLiteral("/tool.exe"), builtIn).has_value());
+        // A program known by name keeps its own entry (and evidence) even if it is also detected.
+        const QString edgeDir = m_dir.filePath(QStringLiteral("edge"));
+        touch(edgeDir + QStringLiteral("/msedge.exe"));
+        touch(edgeDir + QStringLiteral("/icudtl.dat"));
+        touch(edgeDir + QStringLiteral("/v8_context_snapshot.bin"));
+        QVERIFY(suggestedOptionFor(edgeDir + QStringLiteral("/msedge.exe"), builtIn)->evidence.startsWith(QStringLiteral("Verified")));
+    }
+
     // ---- applying ---------------------------------------------------------------------------------
     void applyWritesOnlyJustifiedValues()
     {

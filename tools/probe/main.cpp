@@ -4,9 +4,12 @@
 // preference actually does on this PC. It creates a Direct3D 11 device the way a typical
 // application does (default adapter), reports that adapter, the DXGI enumeration order and what
 // IDXGIFactory6::EnumAdapterByGpuPreference returns, prints one JSON object to stdout and exits.
-// It opens no window, writes no files and changes no settings.
+// It writes no files and changes no settings, and opens no window unless asked to (--window).
 //
 //   GPUFusionProbe.exe                      report and exit (used by the preference verification)
+//   ... --window <seconds>                  also show a small window and keep running until it is closed
+//                                           (or the time is up) — a stand-in for a running program that
+//                                           GPU Fusion may ask to close; ... --ignore-close refuses to close
 //   GPUFusionProbe.exe --render <seconds>   also render for <seconds> on the device it got, so GPU
 //                                           Fusion can observe which GPU's 3D engine does the work
 //   ... --adapter <HHHHHHHH_LLLLLLLL>       create the device on that adapter (LUID) instead of the
@@ -132,17 +135,73 @@ long long render(ID3D11Device* device, double seconds, std::string* error)
     return draws;
 }
 
+bool g_ignoreClose = false;
+
+LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    if (msg == WM_CLOSE) {
+        if (!g_ignoreClose)
+            DestroyWindow(hwnd);
+        return 0;
+    }
+    if (msg == WM_DESTROY) {
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+// Shows a small window (minimised, not activated) and pumps messages until it is closed or `seconds`
+// pass. Returns true if it was closed by a close request.
+bool runWindow(double seconds)
+{
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = windowProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = L"GPUFusionProbeWindow";
+    RegisterClassW(&wc);
+    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"GPU Fusion probe (test window)", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+                                320, 120, nullptr, nullptr, wc.hInstance, nullptr);
+    if (!hwnd)
+        return false;
+    ShowWindow(hwnd, SW_SHOWMINNOACTIVE);
+    const auto start = std::chrono::steady_clock::now();
+    MSG msg;
+    for (;;) {
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT)
+                return true;
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        if (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= seconds) {
+            DestroyWindow(hwnd);
+            return false;
+        }
+        MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
+    }
+}
+
 } // namespace
 
 int wmain(int argc, wchar_t** argv)
 {
-    double renderSeconds = 0;
+    double renderSeconds = 0, windowSeconds = 0;
     std::wstring wantedLuid;
     for (int i = 1; i < argc; ++i) {
         if (wcscmp(argv[i], L"--render") == 0 && i + 1 < argc)
             renderSeconds = std::wcstod(argv[++i], nullptr);
         else if (wcscmp(argv[i], L"--adapter") == 0 && i + 1 < argc)
             wantedLuid = argv[++i];
+        else if (wcscmp(argv[i], L"--window") == 0 && i + 1 < argc)
+            windowSeconds = std::wcstod(argv[++i], nullptr);
+        else if (wcscmp(argv[i], L"--ignore-close") == 0)
+            g_ignoreClose = true;
+    }
+    if (windowSeconds > 0) {
+        const bool closed = runWindow(windowSeconds);
+        printf("{\"probeVersion\":2,\"pid\":%lu,\"window\":{\"closedByRequest\":%s}}\n", GetCurrentProcessId(), closed ? "true" : "false");
+        return 0;
     }
 
     std::string json = "{\"probeVersion\":2";

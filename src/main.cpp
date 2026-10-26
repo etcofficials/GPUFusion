@@ -12,6 +12,7 @@
 #include "profiles/KnownOptions.h"
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
+#include "profiles/RunningInstances.h"
 #include "diagnostics/DiagnosticReport.h"
 #include "dispatch/JobDispatcher.h"
 #include "ui/DiagnosticsCollector.h"
@@ -86,6 +87,9 @@ int main(int argc, char* argv[])
                                             QStringLiteral("arguments"));
     const QCommandLineOption knownOptionOpt(QStringLiteral("profile-known-option"),
         QStringLiteral("With --apply-profile: put the program's known GPU option (if GPU Fusion knows one) first in its launch arguments."));
+    const QCommandLineOption closeRunningOpt(QStringLiteral("close-running"),
+        QStringLiteral("With --launch-profile / --verify-profile: if the program is running, ask it to close first (like its close button; "
+                       "never forced). Exit code 10 if it does not close."));
     const QCommandLineOption launchProfileOpt(QStringLiteral("launch-profile"),
         QStringLiteral("Start the program of a GPU profile (<exe> or profile id) with its arguments and GPU choice, and exit."), QStringLiteral("profile"));
     const QCommandLineOption verifyProfileOpt(QStringLiteral("verify-profile"),
@@ -107,7 +111,7 @@ int main(int argc, char* argv[])
         QStringLiteral("With --dispatch: measure the batch <n> times on each GPU alone and on all chosen GPUs, check outputs and report "
                        "whether all GPUs together are significantly faster."), QStringLiteral("n"));
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
-                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, launchProfileOpt, verifyProfileOpt,
+                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, launchProfileOpt, verifyProfileOpt,
                      dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
     cli.process(app);
 
@@ -257,7 +261,7 @@ int main(int argc, char* argv[])
                 if (cli.isSet(profileArgsOpt))
                     p.arguments = cli.value(profileArgsOpt);
                 if (cli.isSet(knownOptionOpt)) {
-                    const auto known = gf::profiles::knownOptionFor(
+                    const auto known = gf::profiles::suggestedOptionFor(
                         exe, gf::profiles::loadKnownOptions(QDir(data.configDir()).filePath(QStringLiteral("gpu-options.json"))));
                     if (known)
                         p.arguments = gf::profiles::withKnownOption(p.arguments, *known);
@@ -280,6 +284,21 @@ int main(int argc, char* argv[])
                     qCCritical(lcApp).noquote() << "No GPU profile for" << key;
                     QApplication::exit(2);
                     return;
+                }
+                const QString exe = gf::profiles::resolveCurrentExecutable(p->exePath);
+                if (const auto running = gf::profiles::runningInstances(exe); !running.isEmpty()) {
+                    if (cli.isSet(closeRunningOpt)) {
+                        const gf::profiles::CloseOutcome closed = gf::profiles::closeGracefully(exe);
+                        qCInfo(lcApp).noquote() << closed.message;
+                        if (!closed.ok()) {
+                            QApplication::exit(10);
+                            return;
+                        }
+                    } else {
+                        qCWarning(lcApp).noquote() << QStringLiteral("%1 is already running (%2 process(es)): it keeps its current GPU, and it may "
+                                                                     "take over the new launch. Use --close-running to ask it to close first.")
+                                                          .arg(QFileInfo(exe).fileName()).arg(running.size());
+                    }
                 }
                 if (cli.isSet(launchProfileOpt)) {
                     const auto pid = gf::profiles::launchProfile(*p, gpus, &error);

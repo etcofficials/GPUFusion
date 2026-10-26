@@ -9,6 +9,7 @@
 #include "profiles/KnownOptions.h"
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
+#include "profiles/RunningInstances.h"
 #include "ui/AppContext.h"
 #include "ui/Theme.h"
 #include "ui/widgets/Card.h"
@@ -19,6 +20,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -367,7 +369,7 @@ profiles::CapabilityInputs GpuManagerPage::inputsFor(const AppProfile& p)
 void GpuManagerPage::refreshKnownOption(const AppProfile& p)
 {
     QStringList problems;
-    const auto known = profiles::knownOptionFor(
+    const auto known = profiles::suggestedOptionFor(
         p.exePath, profiles::loadKnownOptions(QDir(m_context.data().configDir()).filePath(QStringLiteral("gpu-options.json")), &problems));
     const ThemeColors& c = colors();
     QStringList html;
@@ -524,11 +526,56 @@ void GpuManagerPage::applySelected(bool confirm)
                          "GPU it really uses.").arg(r.message.toHtmlEscaped()));
 }
 
+bool GpuManagerPage::handleRunning(const QString& exe, const QString& action)
+{
+    const QList<profiles::RunningInstance> running = profiles::runningInstances(exe);
+    if (running.isEmpty() || m_runningPolicy == RunningPolicy::Continue)
+        return true;
+    const QString name = QFileInfo(exe).fileName();
+    bool close = m_runningPolicy == RunningPolicy::Close;
+    if (m_runningPolicy == RunningPolicy::Ask) {
+        QMessageBox box(QMessageBox::Question, tr("%1 is running").arg(name),
+                        tr("%1 is already running (%2 process(es)). A running program keeps the GPU it started on: Windows applies a "
+                           "GPU preference, and programs read their own GPU option, only when they start — and many programs (browsers, "
+                           "chat apps) hand a new launch to the instance that is already running.\n\n"
+                           "GPU Fusion can ask it to close, as if you clicked its close button (it is never ended by force; unsaved "
+                           "work prompts appear as usual), and then %3.").arg(name).arg(running.size()).arg(action),
+                        QMessageBox::Cancel, this);
+        QPushButton* closeButton = box.addButton(tr("Close it and continue"), QMessageBox::AcceptRole);
+        QPushButton* anyway = box.addButton(tr("Continue anyway"), QMessageBox::ActionRole);
+        box.setDefaultButton(closeButton);
+        box.exec();
+        if (box.clickedButton() == anyway)
+            return true;
+        if (box.clickedButton() != closeButton)
+            return false;
+        close = true;
+    }
+    if (!close)
+        return true;
+    m_result->setText(tr("Asking %1 to close…").arg(name.toHtmlEscaped()));
+    auto outcome = std::make_shared<profiles::CloseOutcome>();
+    QEventLoop loop;
+    QThread* worker = QThread::create([exe, outcome] { *outcome = profiles::closeGracefully(exe); });
+    connect(worker, &QThread::finished, &loop, &QEventLoop::quit);
+    setBusy(true);
+    worker->start();
+    loop.exec(); // the window stays responsive while the program closes
+    worker->wait();
+    delete worker;
+    setBusy(false);
+    m_result->setText(QStringLiteral("<span style='color:%1'>%2</span>")
+                          .arg((outcome->ok() ? colors().textMuted : colors().warn).name(), outcome->message.toHtmlEscaped()));
+    return outcome->ok();
+}
+
 void GpuManagerPage::launchSelected()
 {
     const auto p = selected();
     const auto& d = m_context.hardware().latest();
     if (!p || !d)
+        return;
+    if (!handleRunning(profiles::resolveCurrentExecutable(p->exePath), tr("start it from its profile")))
         return;
     QString error;
     const auto pid = profiles::launchProfile(*p, profiles::selectableGpus(*d), &error);
@@ -554,6 +601,8 @@ void GpuManagerPage::verifySelected(int seconds, bool confirm)
         if (QMessageBox::question(this, tr("Verify on this PC"), message) != QMessageBox::Yes)
             return;
     }
+    if (!handleRunning(profiles::resolveCurrentExecutable(p->exePath), tr("start it from its profile and watch it")))
+        return;
     const hw::DetectionResult detection = *d;
     const std::optional<QString> stored = m_context.preferences().manager().rawValue(profiles::resolveCurrentExecutable(p->exePath));
     auto profile = std::make_shared<AppProfile>(*p);

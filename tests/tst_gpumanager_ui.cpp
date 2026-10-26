@@ -20,6 +20,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QProcess>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -203,6 +204,46 @@ private Q_SLOTS:
         qInfo().noquote() << page.resultText();
         const auto saved = store.find(probeguard::probePath());
         QVERIFY2(saved->lastVerification && saved->lastVerification->confirmed, qPrintable(page.resultText()));
+    }
+
+    // The program is already running when "Verify on this PC" is used: the page asks it to close first
+    // (policy Close stands in for the user's choice), then verifies a fresh instance.
+    void runningProgramIsClosedBeforeVerify()
+    {
+        QTemporaryDir dir;
+        DataLocation data = resolveDataLocation(dir.path(), dir.filePath(QStringLiteral("data")), dir.filePath(QStringLiteral("fb")));
+        QVERIFY(ensureDataLayout(data).isEmpty());
+        hw::HardwareService hardware;
+        QSignalSpy detected(&hardware, &hw::HardwareService::detectionFinished);
+        hardware.refresh(true);
+        QVERIFY(detected.wait(20000));
+        SettingsStore settingsStore(data.settingsFile());
+        auto loaded = settingsStore.load();
+        mon::MonitorService monitor(hardware, loaded.settings);
+        pref::PreferenceService prefs(data.configDir(), data.reportsDir(), probeguard::probePath());
+        profiles::ProfileStore store(QDir(data.configDir()).filePath(QStringLiteral("profiles")));
+        ui::AppContext context(data, &settingsStore, loaded, &hardware, &monitor, &prefs, nullptr, nullptr, &store);
+        ui::GpuManagerPage page(context);
+        page.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&page));
+        QVERIFY(page.addProgram(probeguard::probePath(), QStringLiteral("Probe")));
+        page.setArguments(QStringLiteral("--render 4"));
+        page.selectMode(profiles::GpuMode::Automatic);
+        page.applySelected(false);
+
+        QProcess running; // an instance that is already running, with a window
+        running.start(probeguard::probePath(), { QStringLiteral("--window"), QStringLiteral("60") });
+        QVERIFY(running.waitForStarted(10000));
+        QTest::qWait(800);
+        page.setRunningPolicy(ui::GpuManagerPage::RunningPolicy::Close);
+        QSignalSpy finished(&page, &ui::GpuManagerPage::verificationFinished);
+        page.verifySelected(5, false);
+        // (the page's event loop may already have processed the exit; waitForFinished is false then)
+        QVERIFY(running.state() == QProcess::NotRunning || running.waitForFinished(15000));
+        QVERIFY(running.readAllStandardOutput().contains("\"closedByRequest\":true"));
+        QVERIFY(finished.wait(60000));
+        qInfo().noquote() << page.resultText();
+        QVERIFY(store.find(probeguard::probePath())->lastVerification.has_value());
     }
 
     void cleanupTestCase()
