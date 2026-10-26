@@ -9,7 +9,7 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-**Version 1.8.0.** Every version's changes are in [CHANGELOG.md](CHANGELOG.md). For step-by-step use,
+**Version 1.9.0.** Every version's changes are in [CHANGELOG.md](CHANGELOG.md). For step-by-step use,
 see the **[User guide](docs/USER_GUIDE.md)**.
 
 ## What it does
@@ -148,6 +148,7 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
 
 - [Architecture](docs/ARCHITECTURE.md) · [Phase plan](docs/PHASE_PLAN.md) · [Testing](docs/TESTING.md)
 - [Compatibility](docs/COMPATIBILITY.md) · [Storage policy](docs/STORAGE_POLICY.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
+- **[User guide](docs/USER_GUIDE.md)** (also inside the app: GPU Manager → *Open user guide*)
 - [GPU selection and the GPU Manager](docs/GPU_SELECTION.md) · [SDK](docs/SDK.md) · [Multi-GPU research](docs/MULTI_GPU_RESEARCH.md)
 
 ## Known limitations (current)

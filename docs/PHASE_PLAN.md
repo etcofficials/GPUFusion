@@ -263,6 +263,12 @@
 - Passive verification of everyday use: the Applications page compares each running program's live
   GPU activity with its profile(s). Nothing is launched. "GPU profile…" opens it in the GPU Manager.
 
+## 1.9 — documentation consolidation (2026-10-26)
+
+- User guide, in-app guide viewer (Markdown, inter-document and in-page links), docs shipped in the
+  packages, README overview by page, troubleshooting for the GPU Manager, doc audit for statements
+  later releases made stale. The "translations" build warning was investigated: harmless, documented.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

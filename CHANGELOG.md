@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0 — 2026-10-26
+
+Documentation you can use from inside the app.
+
+- **User guide** (`docs/USER_GUIDE.md`), task by task: choose a program's GPU, use its own GPU option,
+  start it through a shortcut, check that it works, variants, backup, batches of jobs, and what GPU
+  Fusion never does.
+- **Open user guide** on the GPU Manager page shows it inside GPU Fusion. No Markdown viewer is
+  needed, the contents and the links between documents work, and web links open in your browser.
+  The ZIP and the installer now include the guide and the documents it links to (`docs\`, `README.md`).
+- **Troubleshooting** gained a GPU Manager section: ✗ in the Applications page, "no measurable GPU
+  work", processes that could not be inspected, browsers ignoring their option, programs that do not
+  close, shortcuts without a profile, variants, imported profiles.
+- The README now gives an overview by page instead of a list of every release's news.
+
 ## 1.8.0 — 2026-10-26
 
 - **Live GPU-profile check on the Applications page.** For every running program that has a GPU

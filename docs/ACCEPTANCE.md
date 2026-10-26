@@ -135,7 +135,16 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Everyday use checked against the profile without launching anything | ✔ | Applications "GPU profile" column; `tst_applications_ui` (✗ when started normally, ✓ with the option), `tst_processtable` |
 | No claim beyond the measurement | ✔ | "idle" when there is no GPU work; mismatch explained, not hidden |
 
+## 1.9 — documentation
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Users can find out how to do things without reading source or history | ✔ | `docs/USER_GUIDE.md`, shown in the app; shipped in the packages; `tst_guide` |
+| Docs do not contradict the current version | ✔ | audit of README/docs for statements later releases made stale; README rewritten as an overview |
+
 ## Tests at release
+
+1.9.0: 33 CTest entries, 233 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.8.0: 32 CTest entries, 232 cases, all passing with reference-machine expectations (2026-10-26).
 
