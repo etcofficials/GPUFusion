@@ -1,14 +1,19 @@
 // Live checks of running-instance handling with GPUFusionProbe as the program (never another
 // program): instances are found by path; a close request closes a program with a window; a program
 // that refuses, or has no window, is reported as still running and is not ended by GPU Fusion.
+#include "hardware/AdapterDetector.h"
 #include "profiles/RunningInstances.h"
 
 #include "ProbePreferenceGuard.h"
 
 #include <QElapsedTimer>
 #include <QProcess>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
+
+#include <windows.h>
+#include <shellapi.h>
 
 using namespace gf;
 using namespace gf::profiles;
@@ -83,6 +88,50 @@ private Q_SLOTS:
         QCOMPARE(r.remaining.size(), 1);
         QVERIFY(r.message.contains(QStringLiteral("does not end programs by force")));
         QCOMPARE(m_probe.state(), QProcess::Running); // still running: GPU Fusion did not end it
+    }
+
+    // A GPU Fusion shortcut, opened like a double-click, starts the program through its profile: the
+    // GPU placeholder in the profile's arguments arrives filled in for the integrated GPU.
+    void shortcutStartsTheProgramThroughItsProfile()
+    {
+        const QString app = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("GPUFusion.exe"));
+        if (!QFileInfo::exists(app))
+            QSKIP("GPUFusion.exe is not built next to the tests");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString data = QDir::toNativeSeparators(dir.filePath(QStringLiteral("data")));
+        auto gpuFusion = [&](const QStringList& args) {
+            QProcess p;
+            p.start(app, QStringList{ QStringLiteral("--data-dir"), data } + args);
+            return p.waitForFinished(60000) ? p.exitCode() : -1;
+        };
+        QCOMPARE(gpuFusion({ QStringLiteral("--apply-profile"), probeguard::probePath(), QStringLiteral("--mode"), QStringLiteral("integrated"),
+                             QStringLiteral("--profile-args"), QStringLiteral("--adapter {luid} --window 30") }), 0);
+        QCOMPARE(gpuFusion({ QStringLiteral("--create-shortcut"), probeguard::probePath(), QStringLiteral("--shortcut-dir"), dir.path() }), 0);
+        const QString lnk = dir.filePath(QStringLiteral("GPUFusionProbe (Integrated GPU).lnk"));
+        QVERIFY(QFileInfo::exists(lnk));
+
+        // Open it as Explorer would.
+        QVERIFY(reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(lnk).utf16()),
+                                                        nullptr, nullptr, SW_SHOWNORMAL)) > 32);
+        QVERIFY(waitFor([] { return !runningInstances(probeguard::probePath()).isEmpty(); }, 20000));
+        QProcess query; // the probe's command line, as Windows records it
+        query.start(QStringLiteral("powershell"), { QStringLiteral("-NoProfile"), QStringLiteral("-Command"),
+            QStringLiteral("(Get-CimInstance Win32_Process -Filter \"Name='GPUFusionProbe.exe'\").CommandLine") });
+        QVERIFY(query.waitForFinished(30000));
+        const QString commandLine = QString::fromLocal8Bit(query.readAllStandardOutput());
+        qInfo().noquote() << commandLine.trimmed();
+        const CloseOutcome closed = closeGracefully(probeguard::probePath(), 10000);
+        QVERIFY2(closed.ok(), qPrintable(closed.message));
+
+        QString integratedLuid;
+        for (const hw::Adapter& a : hw::detectAdapters(nullptr).adapters)
+            if (a.dxgi && !a.isSoftware() && a.classification.value == hw::AdapterClass::Integrated)
+                integratedLuid = hw::formatLuid(a.dxgi->luid);
+        if (integratedLuid.isEmpty())
+            QVERIFY(!commandLine.contains(QStringLiteral("--adapter"))); // no integrated GPU: the option is left out
+        else
+            QVERIFY2(commandLine.contains(QStringLiteral("--adapter ") + integratedLuid), qPrintable(commandLine));
     }
 
     void programWithoutAWindowIsReported()

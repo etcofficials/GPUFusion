@@ -105,6 +105,7 @@ add_library(gpufusion_profiles STATIC
     profiles/ProfileActions.cpp profiles/ProfileActions.h
     profiles/ProfileStore.cpp profiles/ProfileStore.h
     profiles/RunningInstances.cpp profiles/RunningInstances.h
+    profiles/Shortcuts.cpp profiles/Shortcuts.h
 )
 target_link_libraries(gpufusion_profiles PUBLIC gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options ole32 shell32 uuid user32)
 

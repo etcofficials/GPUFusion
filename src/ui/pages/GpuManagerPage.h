@@ -50,6 +50,8 @@ public:
     QString knownOptionText() const;
     void useKnownOption();
     void setArguments(const QString& arguments);
+    // Writes a shortcut for the selected (saved) profile to `path` (.lnk). For tests and the button.
+    bool createShortcut(const QString& path);
 
 Q_SIGNALS:
     void verificationFinished();
@@ -86,6 +88,7 @@ private:
     QPushButton* m_apply;
     QPushButton* m_launch;
     QPushButton* m_verify;
+    QPushButton* m_shortcut;
     QLabel* m_result;
     QWidget* m_editor;
     QPointer<QThread> m_thread;

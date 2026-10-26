@@ -96,7 +96,8 @@ set_tests_properties(tst_profiles_live PROPERTIES FIXTURES_REQUIRED probe_prefer
 # Asks the probe (only the probe) to close; serial, so it never touches probes of other tests.
 gpufusion_add_test(tst_running_live tst_running_live.cpp LABELS hardware)
 target_link_libraries(tst_running_live PRIVATE gpufusion_profiles)
-add_dependencies(tst_running_live GPUFusionProbe)
+add_dependencies(tst_running_live GPUFusionProbe GPUFusion)
+target_link_libraries(tst_running_live PRIVATE shell32)
 set_tests_properties(tst_running_live PROPERTIES RUN_SERIAL TRUE)
 gpufusion_add_test(tst_gpumanager_ui tst_gpumanager_ui.cpp LABELS hardware registry)
 target_link_libraries(tst_gpumanager_ui PRIVATE gpufusion_ui)

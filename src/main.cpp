@@ -13,6 +13,7 @@
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
 #include "profiles/RunningInstances.h"
+#include "profiles/Shortcuts.h"
 #include "diagnostics/DiagnosticReport.h"
 #include "dispatch/JobDispatcher.h"
 #include "ui/DiagnosticsCollector.h"
@@ -26,6 +27,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QSysInfo>
@@ -90,6 +92,13 @@ int main(int argc, char* argv[])
     const QCommandLineOption closeRunningOpt(QStringLiteral("close-running"),
         QStringLiteral("With --launch-profile / --verify-profile: if the program is running, ask it to close first (like its close button; "
                        "never forced). Exit code 10 if it does not close."));
+    const QCommandLineOption interactiveOpt(QStringLiteral("interactive"),
+        QStringLiteral("With --launch-profile: report problems in dialogs and ask what to do if the program is running (used by GPU Fusion shortcuts)."));
+    const QCommandLineOption createShortcutOpt(QStringLiteral("create-shortcut"),
+        QStringLiteral("Write a shortcut that starts the program of GPU profile <exe|id> through GPU Fusion (to the Desktop, or --shortcut-dir), and exit."),
+        QStringLiteral("profile"));
+    const QCommandLineOption shortcutDirOpt(QStringLiteral("shortcut-dir"), QStringLiteral("With --create-shortcut: the folder to write it to."),
+                                            QStringLiteral("folder"));
     const QCommandLineOption launchProfileOpt(QStringLiteral("launch-profile"),
         QStringLiteral("Start the program of a GPU profile (<exe> or profile id) with its arguments and GPU choice, and exit."), QStringLiteral("profile"));
     const QCommandLineOption verifyProfileOpt(QStringLiteral("verify-profile"),
@@ -111,7 +120,7 @@ int main(int argc, char* argv[])
         QStringLiteral("With --dispatch: measure the batch <n> times on each GPU alone and on all chosen GPUs, check outputs and report "
                        "whether all GPUs together are significantly faster."), QStringLiteral("n"));
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
-                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, launchProfileOpt, verifyProfileOpt,
+                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, interactiveOpt, createShortcutOpt, shortcutDirOpt, launchProfileOpt, verifyProfileOpt,
                      dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
     cli.process(app);
 
@@ -241,7 +250,7 @@ int main(int argc, char* argv[])
         return code;
     }
 
-    if (cli.isSet(applyProfileOpt) || cli.isSet(launchProfileOpt) || cli.isSet(verifyProfileOpt)) {
+    if (cli.isSet(applyProfileOpt) || cli.isSet(launchProfileOpt) || cli.isSet(verifyProfileOpt) || cli.isSet(createShortcutOpt)) {
         // Headless profile operations: same store, apply/launch/verify code as the GPU Manager page.
         int exitCode = 2;
         auto run = [&] {
@@ -278,23 +287,60 @@ int main(int argc, char* argv[])
                     exitCode = 9;
                 }
             } else {
-                const QString key = cli.isSet(launchProfileOpt) ? cli.value(launchProfileOpt) : cli.value(verifyProfileOpt);
+                const bool interactive = cli.isSet(interactiveOpt); // started from a GPU Fusion shortcut: tell the user in dialogs
+                auto tell = [&](QMessageBox::Icon icon, const QString& text) {
+                    if (interactive)
+                        QMessageBox(icon, QStringLiteral("GPU Fusion"), text, QMessageBox::Ok).exec();
+                };
+                const QString key = cli.isSet(createShortcutOpt) ? cli.value(createShortcutOpt)
+                                  : cli.isSet(launchProfileOpt)  ? cli.value(launchProfileOpt) : cli.value(verifyProfileOpt);
                 auto p = profileStore.find(key);
                 if (!p) {
                     qCCritical(lcApp).noquote() << "No GPU profile for" << key;
+                    tell(QMessageBox::Warning, QStringLiteral("There is no GPU profile for %1 (any more). Open GPU Fusion's GPU Manager to "
+                                                              "create one.").arg(key));
                     QApplication::exit(2);
+                    return;
+                }
+                if (cli.isSet(createShortcutOpt)) {
+                    const QString folder = cli.isSet(shortcutDirOpt) ? cli.value(shortcutDirOpt) : gf::profiles::desktopFolder();
+                    const gf::profiles::ShortcutSpec s = gf::profiles::profileShortcut(
+                        *p, QApplication::applicationFilePath(), folder,
+                        data.source == gf::DataLocation::Source::CommandLine ? data.root : QString());
+                    const bool ok = gf::profiles::writeShortcut(s, &error);
+                    qCInfo(lcApp).noquote() << (ok ? QStringLiteral("Shortcut written: %1 -> %2 %3").arg(s.path, s.target, gf::profiles::joinArguments(s.arguments))
+                                                   : QStringLiteral("Shortcut not written: %1").arg(error));
+                    QApplication::exit(ok ? 0 : 9);
                     return;
                 }
                 const QString exe = gf::profiles::resolveCurrentExecutable(p->exePath);
                 if (const auto running = gf::profiles::runningInstances(exe); !running.isEmpty()) {
-                    if (cli.isSet(closeRunningOpt)) {
+                    bool close = cli.isSet(closeRunningOpt);
+                    if (interactive && !close && cli.isSet(launchProfileOpt)) {
+                        QMessageBox box(QMessageBox::Question, QStringLiteral("GPU Fusion"),
+                                        QStringLiteral("%1 is already running. It keeps the GPU it started on, and it may simply take over this "
+                                                       "launch.\n\nAsk it to close (like clicking its close button) and start it with GPU mode "
+                                                       "\"%2\"?").arg(p->name, gf::profiles::modeText(p->mode)), QMessageBox::Cancel);
+                        QPushButton* closeButton = box.addButton(QStringLiteral("Close it and start"), QMessageBox::AcceptRole);
+                        QPushButton* anyway = box.addButton(QStringLiteral("Start anyway"), QMessageBox::ActionRole);
+                        box.setDefaultButton(closeButton);
+                        box.exec();
+                        if (box.clickedButton() == closeButton)
+                            close = true;
+                        else if (box.clickedButton() != anyway) {
+                            QApplication::exit(0);
+                            return;
+                        }
+                    }
+                    if (close) {
                         const gf::profiles::CloseOutcome closed = gf::profiles::closeGracefully(exe);
                         qCInfo(lcApp).noquote() << closed.message;
                         if (!closed.ok()) {
+                            tell(QMessageBox::Information, closed.message);
                             QApplication::exit(10);
                             return;
                         }
-                    } else {
+                    } else if (!interactive) {
                         qCWarning(lcApp).noquote() << QStringLiteral("%1 is already running (%2 process(es)): it keeps its current GPU, and it may "
                                                                      "take over the new launch. Use --close-running to ask it to close first.")
                                                           .arg(QFileInfo(exe).fileName()).arg(running.size());
@@ -303,6 +349,8 @@ int main(int argc, char* argv[])
                 if (cli.isSet(launchProfileOpt)) {
                     const auto pid = gf::profiles::launchProfile(*p, gpus, &error);
                     qCInfo(lcApp).noquote() << "Launch profile" << p->name << (pid ? QStringLiteral("pid %1").arg(*pid) : error);
+                    if (!pid)
+                        tell(QMessageBox::Warning, QStringLiteral("%1 could not be started: %2").arg(p->name, error));
                     exitCode = pid ? 0 : 9;
                 } else {
                     const int seconds = std::clamp(cli.value(verifySecondsOpt).toInt(), 3, 600);
@@ -323,7 +371,7 @@ int main(int argc, char* argv[])
             QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
         else
             QTimer::singleShot(0, &app, run);
-        app.exec();
+        exitCode = app.exec(); // the code passed to QApplication::exit, including early exits
         gf::log::shutdown();
         return exitCode;
     }
@@ -384,7 +432,7 @@ int main(int argc, char* argv[])
             QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
         else
             QTimer::singleShot(0, &app, run);
-        app.exec();
+        exitCode = app.exec(); // the code passed to QApplication::exit, including early exits
         gf::log::shutdown();
         return exitCode;
     }
@@ -423,7 +471,7 @@ int main(int argc, char* argv[])
             QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
         else
             QTimer::singleShot(0, &app, run);
-        app.exec();
+        exitCode = app.exec(); // the code passed to QApplication::exit, including early exits
         gf::log::shutdown();
         return exitCode;
     }

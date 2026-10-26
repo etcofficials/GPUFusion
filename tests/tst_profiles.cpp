@@ -7,6 +7,7 @@
 #include "profiles/KnownOptions.h"
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
+#include "profiles/Shortcuts.h"
 
 #include <QDir>
 #include <QFile>
@@ -455,6 +456,36 @@ private Q_SLOTS:
         touch(edgeDir + QStringLiteral("/icudtl.dat"));
         touch(edgeDir + QStringLiteral("/v8_context_snapshot.bin"));
         QVERIFY(suggestedOptionFor(edgeDir + QStringLiteral("/msedge.exe"), builtIn)->evidence.startsWith(QStringLiteral("Verified")));
+    }
+
+    // ---- shortcuts ----------------------------------------------------------------------------------
+    void shortcutsStartTheProgramThroughItsProfile()
+    {
+        AppProfile p = newProfile(QStringLiteral("C:\\Apps\\Tool\\tool.exe"), QStringLiteral("My: Tool?"));
+        p.mode = GpuMode::Integrated;
+        QCOMPARE(shortcutName(p), QStringLiteral("My_ Tool_ (Integrated GPU)"));          // safe as a file name
+        QCOMPARE(shortcutArguments(p), (QStringList{ QStringLiteral("--launch-profile"), p.id, QStringLiteral("--interactive") }));
+        QCOMPARE(shortcutArguments(p, QStringLiteral("D:/Data Folder")).mid(3),
+                 (QStringList{ QStringLiteral("--data-dir"), QStringLiteral("D:\\Data Folder") }));
+        QCOMPARE(joinArguments({ QStringLiteral("--a"), QStringLiteral("b c"), QString() }), QStringLiteral("--a \"b c\" \"\""));
+
+        const QString exe = m_dir.filePath(QStringLiteral("shortcut/app/My App.exe"));
+        touch(exe);
+        AppProfile real = newProfile(exe);
+        const ShortcutSpec spec = profileShortcut(real, QStringLiteral("C:\\GPU Fusion\\GPUFusion.exe"), m_dir.filePath(QStringLiteral("shortcut")),
+                                                  QStringLiteral("D:\\My Data"));
+        QVERIFY(spec.path.endsWith(QStringLiteral("My App (Automatic).lnk")));
+        QCOMPARE(spec.iconPath, QDir::toNativeSeparators(exe));                            // the program's own icon
+        QString error;
+        QVERIFY2(writeShortcut(spec, &error), qPrintable(error));
+        const auto back = readShortcut(spec.path, &error);
+        QVERIFY2(back.has_value(), qPrintable(error));
+        QCOMPARE(back->target, spec.target);
+        QCOMPARE(back->arguments, spec.arguments);                                          // round trip, incl. paths with spaces
+        QCOMPARE(back->workingDirectory, QDir::toNativeSeparators(QFileInfo(exe).absolutePath()));
+        QCOMPARE(back->iconPath, spec.iconPath);
+        QVERIFY(back->description.contains(QStringLiteral("through GPU Fusion")));
+        QVERIFY(!readShortcut(m_dir.filePath(QStringLiteral("missing.lnk")), &error).has_value());
     }
 
     // ---- applying ---------------------------------------------------------------------------------

@@ -10,6 +10,7 @@
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
 #include "profiles/RunningInstances.h"
+#include "profiles/Shortcuts.h"
 #include "ui/AppContext.h"
 #include "ui/Theme.h"
 #include "ui/widgets/Card.h"
@@ -174,9 +175,13 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
     m_launch->setToolTip(tr("Start the program from its profile (with its arguments and GPU choice)"));
     m_verify = new QPushButton(tr("Verify on this PC"));
     m_verify->setToolTip(tr("Start the program from its profile and observe which GPU(s) its processes really use"));
+    m_shortcut = new QPushButton(tr("Create shortcut…"));
+    m_shortcut->setToolTip(tr("A shortcut that always starts the program through this profile (its GPU option and arguments, and a "
+                              "question if it is already running) — without opening GPU Fusion's window"));
     actions->addWidget(m_apply);
     actions->addWidget(m_launch);
     actions->addWidget(m_verify);
+    actions->addWidget(m_shortcut);
     actions->addStretch(1);
     editor->addLayout(actions);
     m_result = richLabel();
@@ -207,6 +212,15 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
     connect(m_useKnownOption, &QPushButton::clicked, this, &GpuManagerPage::useKnownOption);
     connect(m_apply, &QPushButton::clicked, this, [this] { applySelected(true); });
     connect(m_launch, &QPushButton::clicked, this, &GpuManagerPage::launchSelected);
+    connect(m_shortcut, &QPushButton::clicked, this, [this] {
+        const auto p = selected();
+        if (!p)
+            return;
+        const QString suggested = QDir(profiles::desktopFolder()).filePath(profiles::shortcutName(*p) + QStringLiteral(".lnk"));
+        const QString path = QFileDialog::getSaveFileName(this, tr("Create shortcut"), suggested, tr("Shortcuts (*.lnk)"));
+        if (!path.isEmpty())
+            createShortcut(path);
+    });
     connect(m_verify, &QPushButton::clicked, this, [this] { verifySelected(20, true); });
     connect(&m_context.hardware(), &hw::HardwareService::detectionFinished, this, [this] { m_inputs.reset(); refreshEditor(); });
     connect(&m_context.preferences(), &pref::PreferenceService::changed, this, [this] { m_inputs.reset(); refreshCapability(); });
@@ -403,6 +417,33 @@ void GpuManagerPage::useKnownOption()
 
 void GpuManagerPage::setArguments(const QString& arguments) { m_arguments->setText(arguments); }
 
+bool GpuManagerPage::createShortcut(const QString& path)
+{
+    const auto p = selected();
+    if (!p)
+        return false;
+    if (p->mode != chosenMode() || p->arguments != m_arguments->text().trimmed() || p->shareGpuChoiceWithApp != m_shareChoice->isChecked()) {
+        m_result->setText(tr("Save and apply the changed settings first: the shortcut starts the program with the saved profile."));
+        return false;
+    }
+    const QFileInfo target(path);
+    profiles::ShortcutSpec s = profiles::profileShortcut(
+        *p, QCoreApplication::applicationFilePath(), target.absolutePath(),
+        m_context.data().source == DataLocation::Source::CommandLine ? m_context.data().root : QString());
+    s.path = QDir::toNativeSeparators(target.absoluteFilePath());
+    QString error;
+    if (!profiles::writeShortcut(s, &error)) {
+        m_result->setText(QStringLiteral("<span style='color:%1'>%2</span>").arg(colors().bad.name(), error.toHtmlEscaped()));
+        return false;
+    }
+    qCInfo(lcPrefs).noquote() << "Shortcut written:" << s.path << "->" << s.target << profiles::joinArguments(s.arguments);
+    m_result->setText(tr("Shortcut created: %1<br><span style='color:%2'>It starts %3 through this profile. It keeps working while this "
+                         "profile exists and GPU Fusion stays in %4; changes to the profile apply to it automatically.</span>")
+                          .arg(s.path.toHtmlEscaped(), colors().textMuted.name(), p->name.toHtmlEscaped(),
+                               QDir::toNativeSeparators(QCoreApplication::applicationDirPath()).toHtmlEscaped()));
+    return true;
+}
+
 GpuMode GpuManagerPage::chosenMode() const
 {
     const int id = m_modes->checkedId();
@@ -483,6 +524,7 @@ void GpuManagerPage::setBusy(bool busy)
     const bool exists = p && QFileInfo::exists(profiles::resolveCurrentExecutable(p->exePath));
     m_apply->setEnabled(!busy && exists);
     m_launch->setEnabled(!busy && exists);
+    m_shortcut->setEnabled(!busy && exists);
     m_verify->setEnabled(!busy && exists && m_context.hardware().latest().has_value());
     m_remove->setEnabled(!busy && p.has_value());
     m_list->setEnabled(!busy);
