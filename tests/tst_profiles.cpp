@@ -332,6 +332,13 @@ private Q_SLOTS:
         QVERIFY(!c.write.has_value());                  // still no Windows value
         QVERIFY(c.mechanism.contains(QStringLiteral("own GPU option")));
         QCOMPARE(assessMode(p, GpuMode::Discrete, in).status, ModeStatus::Verified); // unaffected
+
+        CapabilityInputs unverified = in;   // no probe verification yet: Windows unknown, the option still applies
+        unverified.probeVerification.reset();
+        QCOMPARE(assessMode(p, GpuMode::Integrated, unverified).status, ModeStatus::Expected);
+        QVERIFY(!assessMode(p, GpuMode::Integrated, unverified).write.has_value());
+        p.arguments.clear();
+        QCOMPARE(assessMode(p, GpuMode::Integrated, unverified).status, ModeStatus::Unknown);
     }
 
     void knownOptionsAreSuggestionsWithEvidence()

@@ -182,6 +182,17 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
     c.reasons = plan.reasons;
     c.write = plan.write;
     const QString target = plan.target ? plan.target->name : modeText(mode);
+    // The profile passes the GPU through the program's own option (GPU placeholder in its arguments).
+    auto argumentsMechanism = [&](const QString& lead) {
+        c.status = ModeStatus::Expected;
+        c.write.reset(); // a Windows value would not be shown to work: none is written
+        c.mechanism = QStringLiteral("The program's own GPU option in its launch arguments, filled in for %1 when GPU Fusion starts it")
+                          .arg(target);
+        c.summary = QStringLiteral("%1 this profile passes the GPU to the program through its own option. Use \"Verify on this PC\" to "
+                                   "confirm that the program honours it.").arg(lead);
+        c.reasons << QStringLiteral("Applies only when the program is started from GPU Fusion (Launch / Verify / --launch-profile); "
+                                    "started any other way, it uses its default GPU.");
+    };
     switch (plan.enforcement) {
     case Enforcement::Verified:
         c.status = ModeStatus::Verified;
@@ -194,14 +205,8 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
         c.summary = plan.summary;
         break;
     case Enforcement::NotEnforceable:
-        if (usesGpuPlaceholders(profile.arguments)) {
-            c.status = ModeStatus::Expected;
-            c.mechanism = QStringLiteral("The program's own GPU option in its launch arguments, filled in for %1 when GPU Fusion starts it")
-                              .arg(target);
-            c.summary = QStringLiteral("Windows cannot place programs on %1 here, but this profile passes the GPU to the program through its "
-                                       "own option. Use \"Verify on this PC\" to confirm that the program honours it.").arg(target);
-            c.reasons << QStringLiteral("Applies only when the program is started from GPU Fusion (Launch / Verify / --launch-profile); "
-                                        "started any other way, it uses its default GPU.");
+        if (usesGpuPlaceholders(profile.arguments) && plan.target) {
+            argumentsMechanism(QStringLiteral("Windows cannot place programs on %1 here, but").arg(target));
             break;
         }
         c.status = ModeStatus::NeedsAppSupport;
@@ -214,6 +219,10 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
         break;
     case Enforcement::NotApplicable:
     case Enforcement::Unknown:
+        if (usesGpuPlaceholders(profile.arguments) && plan.target) {
+            argumentsMechanism(QStringLiteral("Whether Windows can place programs on %1 here is not known yet, but").arg(target));
+            break;
+        }
         c.status = plan.target ? ModeStatus::Unknown : ModeStatus::Unsupported;
         c.mechanism = QStringLiteral("Windows per-app preference, once verified");
         c.summary = plan.summary;
