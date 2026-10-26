@@ -242,6 +242,22 @@ private Q_SLOTS:
         QVERIFY(v.headline.startsWith(QStringLiteral("Partly")));
     }
 
+    // A sandboxed process that cannot be opened must not turn into a silent "no activity" claim.
+    void uninspectedProcessesAreReported()
+    {
+        UsageEvidence e = evidence(kIntelLuid);
+        e.legacyAdapters = { kIntel.name };
+        e.uninspected = { QStringLiteral("C:\\Browser\\browser.exe") };
+        const UsageVerdict v = evaluateUsage(e);
+        QCOMPARE(v.outcome, UsageOutcome::NoActivity);
+        QVERIFY(v.headline.contains(QStringLiteral("could not be inspected")));
+        QVERIFY(v.details.join(u' ').contains(QStringLiteral("browser.exe")));
+
+        UsageEvidence pdhOnly = evidence(kNvLuid);           // no D3DKMT adapter: nothing to report
+        pdhOnly.uninspected = { QStringLiteral("C:\\Browser\\browser.exe") };
+        QVERIFY(!evaluateUsage(pdhOnly).details.join(u' ').contains(QStringLiteral("could not be read")));
+    }
+
     void notLaunchedAndAlreadyRunningAndNotSaved()
     {
         UsageEvidence e = evidence(kNvLuid);

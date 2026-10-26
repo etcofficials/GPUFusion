@@ -67,7 +67,7 @@ bool KmtProcessProvider::prepare(quint64 luid, AdapterState& st)
 }
 
 void KmtProcessProvider::sample(const QList<ProcessInfo>& processes, QHash<quint32, QList<ProcessAdapterUsage>>& out,
-                                int* inspectable, int* notInspectable)
+                                int* inspectable, int* notInspectable, QList<ProcessInfo>* skipped)
 {
     *inspectable = *notInspectable = 0;
     if (m_adapters.isEmpty())
@@ -80,8 +80,12 @@ void KmtProcessProvider::sample(const QList<ProcessInfo>& processes, QHash<quint
     QSet<QString> alive;
     for (const ProcessInfo& p : processes) {
         HANDLE h = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, p.pid);
+        if (!h) // sandboxed processes (e.g. a browser's GPU process) often grant only the limited right
+            h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, p.pid);
         if (!h) {
             ++*notInspectable;
+            if (skipped)
+                *skipped << p;
             continue;
         }
         ++*inspectable;

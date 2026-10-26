@@ -20,8 +20,9 @@ public:
     void setAdapters(const QList<Adapter>& adapters);
     bool hasSampled() const { return m_sampled; } // rates are valid from the next sample on
     // Adds usage for the configured adapters to `out` (keyed by pid).
+    // `skipped` (optional) receives the processes that could not be opened for inspection.
     void sample(const QList<ProcessInfo>& processes, QHash<quint32, QList<ProcessAdapterUsage>>& out,
-                int* inspectable, int* notInspectable);
+                int* inspectable, int* notInspectable, QList<ProcessInfo>* skipped = nullptr);
 
 private:
     struct AdapterState {

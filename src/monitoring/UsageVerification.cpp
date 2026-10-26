@@ -277,6 +277,19 @@ UsageVerdict evaluateUsage(const UsageEvidence& e)
                              "executable that renders.").arg(otherExes.join(QStringLiteral(", ")), target));
     if (v.outcome == UsageOutcome::NoActivity && e.alreadyRunning)
         v.details << QStringLiteral("An instance was already running; the new launch may have handed over to it and exited.");
+    if (!e.uninspected.isEmpty() && !e.legacyAdapters.isEmpty()) {
+        QStringList skipped;
+        for (const QString& x : e.uninspected)
+            skipped << exeName(x);
+        skipped.removeDuplicates();
+        v.details << QStringLiteral("GPU use on %1 could not be read for %2 process(es) of the program (%3): Windows did not allow "
+                                    "GPU Fusion to inspect them, so work there may be missing from this result. Running GPU Fusion as "
+                                    "administrator can read them.")
+                         .arg(e.legacyAdapters.join(QStringLiteral(", "))).arg(e.uninspected.size()).arg(skipped.join(QStringLiteral(", ")));
+        if (v.outcome == UsageOutcome::NoActivity)
+            v.headline = QStringLiteral("Not verified: no measurable GPU work was seen, but some of the program's processes could not be "
+                                        "inspected on %1.").arg(e.legacyAdapters.join(QStringLiteral(", ")));
+    }
     return v;
 }
 

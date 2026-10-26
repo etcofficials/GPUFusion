@@ -46,8 +46,10 @@ UsageEvidence observeUsage(const QList<MonitorTarget>& targets, const ObserveOpt
         e.adapters << ObservedAdapter{ t.luid, t.name };
         if (t.wddmVersion >= 2000)
             pdhLuids << t.luid;
-        else
+        else {
             legacy << win::KmtProcessProvider::Adapter{ t.luid, t.name };
+            e.legacyAdapters << t.name;
+        }
     }
 
     win::ProcessList list;
@@ -108,7 +110,13 @@ UsageEvidence observeUsage(const QList<MonitorTarget>& targets, const ObserveOpt
                 usage = aggregatePdh(engines, memory, pdhLuids);
         }
         int inspectable = 0, notInspectable = 0;
-        kmt.sample(members, usage, &inspectable, &notInspectable);
+        QList<win::ProcessInfo> skipped;
+        kmt.sample(members, usage, &inspectable, &notInspectable, &skipped);
+        for (const win::ProcessInfo& p : skipped) {
+            const QString who = p.path.isEmpty() ? p.name : QDir::toNativeSeparators(p.path);
+            if (!e.uninspected.contains(who, Qt::CaseInsensitive))
+                e.uninspected << who;
+        }
 
         for (const win::ProcessInfo& p : members) {
             for (const ProcessAdapterUsage& u : usage.value(p.pid))
@@ -122,8 +130,9 @@ UsageEvidence observeUsage(const QList<MonitorTarget>& targets, const ObserveOpt
         while (clock.elapsed() < next && !(cancel && cancel->load()))
             QThread::msleep(50);
     }
-    qCInfo(lcPrefs).noquote() << QStringLiteral("Usage verification: %1 passes, %2 processes in the tree, %3 observations")
-                                     .arg(e.passes).arg(tree.size()).arg(e.observations.size());
+    qCInfo(lcPrefs).noquote() << QStringLiteral("Usage verification: %1 passes, %2 processes in the tree, %3 observations%4")
+                                     .arg(e.passes).arg(tree.size()).arg(e.observations.size())
+                                     .arg(e.uninspected.isEmpty() ? QString() : QStringLiteral(", %1 not inspectable via D3DKMT").arg(e.uninspected.size()));
     return e;
 }
 

@@ -48,6 +48,10 @@ struct UsageEvidence {
     int passes = 0;                          // sampling passes taken
     QList<ObservedAdapter> adapters;
     QList<UsageObservation> observations;    // all passes
+    // Processes of the tree whose GPU use on pre-WDDM 2.0 adapters could not be read (D3DKMT needs a
+    // process handle: other accounts' and protected processes cannot be opened). Executable paths.
+    QStringList uninspected;
+    QStringList legacyAdapters;              // names of the adapters read through D3DKMT
 };
 
 enum class StageState { Passed, Failed, Inconclusive, NotApplicable };
