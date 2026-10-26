@@ -26,7 +26,9 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
 #include <QMessageBox>
+#include <QSaveFile>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStandardPaths>
@@ -92,6 +94,12 @@ int main(int argc, char* argv[])
     const QCommandLineOption closeRunningOpt(QStringLiteral("close-running"),
         QStringLiteral("With --launch-profile / --verify-profile: if the program is running, ask it to close first (like its close button; "
                        "never forced). Exit code 10 if it does not close."));
+    const QCommandLineOption exportProfilesOpt(QStringLiteral("export-profiles"),
+        QStringLiteral("Write every GPU profile to <file> (JSON, for backup or another PC) and exit."), QStringLiteral("file"));
+    const QCommandLineOption importProfilesOpt(QStringLiteral("import-profiles"),
+        QStringLiteral("Add the GPU profiles in <file> (from --export-profiles) and exit. Existing profiles are kept unless "
+                       "--replace-existing; verification results are not imported and no Windows setting is changed."), QStringLiteral("file"));
+    const QCommandLineOption replaceExistingOpt(QStringLiteral("replace-existing"), QStringLiteral("With --import-profiles: replace profiles that already exist."));
     const QCommandLineOption interactiveOpt(QStringLiteral("interactive"),
         QStringLiteral("With --launch-profile: report problems in dialogs and ask what to do if the program is running (used by GPU Fusion shortcuts)."));
     const QCommandLineOption createShortcutOpt(QStringLiteral("create-shortcut"),
@@ -120,7 +128,7 @@ int main(int argc, char* argv[])
         QStringLiteral("With --dispatch: measure the batch <n> times on each GPU alone and on all chosen GPUs, check outputs and report "
                        "whether all GPUs together are significantly faster."), QStringLiteral("n"));
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
-                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, interactiveOpt, createShortcutOpt, shortcutDirOpt, launchProfileOpt, verifyProfileOpt,
+                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, exportProfilesOpt, importProfilesOpt, replaceExistingOpt, interactiveOpt, createShortcutOpt, shortcutDirOpt, launchProfileOpt, verifyProfileOpt,
                      dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
     cli.process(app);
 
@@ -246,6 +254,33 @@ int main(int argc, char* argv[])
         else
             run();
         const int code = app.exec();
+        gf::log::shutdown();
+        return code;
+    }
+
+    if (cli.isSet(exportProfilesOpt) || cli.isSet(importProfilesOpt)) {
+        // Backup / transfer of GPU profiles (no hardware access needed).
+        int code = 0;
+        if (cli.isSet(exportProfilesOpt)) {
+            QSaveFile out(cli.value(exportProfilesOpt));
+            const QList<gf::profiles::AppProfile> all = profileStore.list();
+            if (out.open(QIODevice::WriteOnly) && out.write(gf::profiles::exportProfiles(all)) >= 0 && out.commit()) {
+                qCInfo(lcApp).noquote() << QStringLiteral("Exported %1 GPU profile(s) to %2").arg(all.size()).arg(QDir::toNativeSeparators(out.fileName()));
+            } else {
+                qCCritical(lcApp).noquote() << "Export failed:" << out.errorString();
+                code = 9;
+            }
+        } else {
+            QFile in(cli.value(importProfilesOpt));
+            const gf::profiles::ImportResult r = in.open(QIODevice::ReadOnly)
+                ? gf::profiles::importProfiles(profileStore, in.readAll(), cli.isSet(replaceExistingOpt))
+                : gf::profiles::ImportResult{ false, in.errorString() };
+            if (r.ok)
+                qCInfo(lcApp).noquote() << "Import:" << r.summary();
+            else
+                qCCritical(lcApp).noquote() << "Import failed:" << r.summary();
+            code = r.ok ? 0 : 9;
+        }
         gf::log::shutdown();
         return code;
     }

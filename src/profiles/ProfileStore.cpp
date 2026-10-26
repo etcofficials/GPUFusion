@@ -6,7 +6,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QVersionNumber>
@@ -121,6 +123,77 @@ QString resolveCurrentExecutable(const QString& exePath)
         }
     }
     return bestPath;
+}
+
+QByteArray exportProfiles(const QList<AppProfile>& profiles)
+{
+    QJsonArray list;
+    for (const AppProfile& p : profiles)
+        list.append(p.toJson());
+    const QJsonObject doc{ { "gpuFusionProfiles", 1 }, { "exported", QDateTime::currentDateTime().toString(Qt::ISODate) },
+                           { "profiles", list } };
+    return QJsonDocument(doc).toJson(QJsonDocument::Indented);
+}
+
+QString ImportResult::summary() const
+{
+    if (!ok)
+        return error;
+    QStringList parts{ QStringLiteral("%1 profile(s) imported").arg(imported) };
+    if (replaced)
+        parts << QStringLiteral("%1 replaced").arg(replaced);
+    if (skipped)
+        parts << QStringLiteral("%1 skipped (already here)").arg(skipped);
+    QString s = parts.join(QStringLiteral(", ")) + u'.';
+    if (!missingPrograms.isEmpty())
+        s += QStringLiteral(" Not installed on this PC: %1.").arg(missingPrograms.join(QStringLiteral(", ")));
+    if (imported + replaced > 0)
+        s += QStringLiteral(" No Windows setting was changed: apply a profile to put its mode into effect here, and verify it on this PC.");
+    return s;
+}
+
+ImportResult importProfiles(ProfileStore& store, const QByteArray& document, bool replace)
+{
+    ImportResult r;
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(document, &err);
+    const QJsonObject root = doc.object();
+    if (err.error != QJsonParseError::NoError || !root.contains(QLatin1StringView("gpuFusionProfiles"))) {
+        r.error = QStringLiteral("This is not a GPU Fusion profile export%1.")
+                      .arg(err.error != QJsonParseError::NoError ? QStringLiteral(" (%1)").arg(err.errorString()) : QString());
+        return r;
+    }
+    if (root.value(QLatin1StringView("gpuFusionProfiles")).toInt() > 1) {
+        r.error = QStringLiteral("The export was made by a newer GPU Fusion; update GPU Fusion to import it.");
+        return r;
+    }
+    r.ok = true;
+    for (const QJsonValue& v : root.value(QLatin1StringView("profiles")).toArray()) {
+        std::optional<AppProfile> p = AppProfile::fromJson(v.toObject());
+        if (!p) {
+            ++r.skipped;
+            continue;
+        }
+        // Results and applied values describe the PC the export was made on.
+        p->lastVerification.reset();
+        p->appliedValue.clear();
+        p->created = QDateTime();
+        const bool exists = store.find(p->id).has_value();
+        if (exists && !replace) {
+            ++r.skipped;
+            continue;
+        }
+        QString error;
+        if (!store.save(*p, &error)) {
+            r.ok = false;
+            r.error = error;
+            return r;
+        }
+        ++(exists ? r.replaced : r.imported);
+        if (!QFileInfo::exists(resolveCurrentExecutable(p->exePath)))
+            r.missingPrograms << p->name;
+    }
+    return r;
 }
 
 AppProfile newProfile(const QString& exePath, const QString& name)

@@ -31,6 +31,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSaveFile>
 #include <QScrollArea>
 #include <QThread>
 #include <QVBoxLayout>
@@ -125,10 +126,33 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
     auto* browseButton = new QPushButton(tr("Browse…"));
     m_remove = new QPushButton(tr("Remove profile"));
     m_remove->setToolTip(tr("Deletes GPU Fusion's profile. A Windows preference it stored stays until you set the mode to Automatic first."));
+    auto* exportButton = new QPushButton(tr("Export…"));
+    exportButton->setToolTip(tr("Save every profile to one file — a backup, or to use them on another PC"));
+    auto* importButton = new QPushButton(tr("Import…"));
+    importButton->setToolTip(tr("Add profiles from an exported file. Nothing changes in Windows until you apply a profile."));
     buttons->addWidget(pick);
     buttons->addWidget(browseButton);
     buttons->addWidget(m_remove);
     buttons->addStretch(1);
+    buttons->addWidget(exportButton);
+    buttons->addWidget(importButton);
+    connect(exportButton, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getSaveFileName(this, tr("Export GPU profiles"), QStringLiteral("gpufusion-profiles.json"),
+                                                          tr("GPU Fusion profiles (*.json)"));
+        if (!path.isEmpty())
+            exportTo(path);
+    });
+    connect(importButton, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Import GPU profiles"), QString(), tr("GPU Fusion profiles (*.json)"));
+        if (path.isEmpty())
+            return;
+        const auto choice = QMessageBox::question(this, tr("Import GPU profiles"),
+                                                  tr("Replace profiles that already exist here (same program)?\n\nYes: replace them. No: keep "
+                                                     "the ones here and add only new ones."),
+                                                  QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::No);
+        if (choice != QMessageBox::Cancel)
+            importFrom(path, choice == QMessageBox::Yes);
+    });
     row->addLayout(buttons);
     listCard->body()->addLayout(row);
     layout->addWidget(listCard);
@@ -416,6 +440,35 @@ void GpuManagerPage::useKnownOption()
 }
 
 void GpuManagerPage::setArguments(const QString& arguments) { m_arguments->setText(arguments); }
+
+bool GpuManagerPage::exportTo(const QString& path)
+{
+    if (!m_context.profiles())
+        return false;
+    const QList<AppProfile> all = m_context.profiles()->list();
+    QSaveFile out(path);
+    const bool ok = out.open(QIODevice::WriteOnly) && out.write(profiles::exportProfiles(all)) >= 0 && out.commit();
+    m_result->setText(ok ? tr("Exported %1 profile(s) to %2.").arg(all.size()).arg(QDir::toNativeSeparators(path).toHtmlEscaped())
+                         : QStringLiteral("<span style='color:%1'>%2</span>").arg(colors().bad.name(), out.errorString().toHtmlEscaped()));
+    return ok;
+}
+
+bool GpuManagerPage::importFrom(const QString& path, bool replace)
+{
+    if (!m_context.profiles())
+        return false;
+    QFile in(path);
+    profiles::ImportResult r;
+    if (in.open(QIODevice::ReadOnly))
+        r = profiles::importProfiles(*m_context.profiles(), in.readAll(), replace);
+    else
+        r.error = in.errorString();
+    qCInfo(lcPrefs).noquote() << "Profile import from" << QDir::toNativeSeparators(path) << ":" << r.summary();
+    refreshList();
+    m_result->setText(QStringLiteral("<span style='color:%1'>%2</span>")
+                          .arg((r.ok ? colors().text : colors().bad).name(), r.summary().toHtmlEscaped()));
+    return r.ok;
+}
 
 bool GpuManagerPage::createShortcut(const QString& path)
 {

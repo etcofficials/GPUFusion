@@ -52,6 +52,9 @@ public:
     void setArguments(const QString& arguments);
     // Writes a shortcut for the selected (saved) profile to `path` (.lnk). For tests and the button.
     bool createShortcut(const QString& path);
+    // Profile backup / transfer (the buttons ask for the file; tests call these directly).
+    bool exportTo(const QString& path);
+    bool importFrom(const QString& path, bool replace);
 
 Q_SIGNALS:
     void verificationFinished();

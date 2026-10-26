@@ -227,6 +227,54 @@ private Q_SLOTS:
         QVERIFY(QFile::exists(bad));                                     // left for the user to inspect
     }
 
+    // Backup / transfer: everything round-trips except what describes the PC it was made on.
+    void exportAndImport()
+    {
+        ProfileStore source(m_dir.filePath(QStringLiteral("export-src")));
+        AppProfile here = newProfile(m_dir.filePath(QStringLiteral("x/here.exe")));
+        touch(here.exePath);
+        here.mode = GpuMode::Integrated;
+        here.arguments = QStringLiteral("--use-adapter-luid={luid_pair}");
+        here.appliedValue = QStringLiteral("GpuPreference=1;");
+        ProfileVerification v;
+        v.time = QDateTime::currentDateTime();
+        v.mode = GpuMode::Integrated;
+        v.outcome = QStringLiteral("confirmed");
+        v.confirmed = true;
+        here.lastVerification = v;
+        AppProfile gone = newProfile(QStringLiteral("Z:\\Not\\Installed\\gone.exe"), QStringLiteral("Gone"));
+        QString error;
+        QVERIFY(source.save(here, &error));
+        QVERIFY(source.save(gone, &error));
+        const QByteArray doc = exportProfiles(source.list());
+
+        ProfileStore target(m_dir.filePath(QStringLiteral("export-dst")));
+        ImportResult r = importProfiles(target, doc, false);
+        QVERIFY2(r.ok, qPrintable(r.error));
+        QCOMPARE(r.imported, 2);
+        QCOMPARE(r.missingPrograms, QStringList{ QStringLiteral("Gone") });
+        QVERIFY(r.summary().contains(QStringLiteral("No Windows setting was changed")));
+        const AppProfile in = *target.find(here.exePath);
+        QCOMPARE(in.mode, GpuMode::Integrated);
+        QCOMPARE(in.arguments, here.arguments);                 // the placeholder, valid on any PC
+        QVERIFY(!in.lastVerification.has_value());              // results describe the other PC
+        QVERIFY(in.appliedValue.isEmpty());
+
+        AppProfile local = in;                                   // a profile changed here is kept ...
+        local.mode = GpuMode::Discrete;
+        QVERIFY(target.save(local, &error));
+        r = importProfiles(target, doc, false);
+        QCOMPARE(r.skipped, 2);
+        QCOMPARE(target.find(here.exePath)->mode, GpuMode::Discrete);
+        r = importProfiles(target, doc, true);                   // ... unless replacing was chosen
+        QCOMPARE(r.replaced, 2);
+        QCOMPARE(target.find(here.exePath)->mode, GpuMode::Integrated);
+
+        QVERIFY(!importProfiles(target, "{}", false).ok);
+        QVERIFY(importProfiles(target, "not json", false).error.contains(QStringLiteral("not a GPU Fusion profile export")));
+        QVERIFY(importProfiles(target, R"({"gpuFusionProfiles":2,"profiles":[]})", false).error.contains(QStringLiteral("newer")));
+    }
+
     void versionFoldersResolveToTheNewestCopy()
     {
         const QString root = m_dir.filePath(QStringLiteral("Discordish"));

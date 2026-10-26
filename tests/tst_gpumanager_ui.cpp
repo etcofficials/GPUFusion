@@ -149,6 +149,16 @@ private Q_SLOTS:
         page.applySelected(true);
         QTRY_VERIFY(!pref::findValueName(m_store, probeguard::probePath()).has_value());
         QCOMPARE(store.find(probeguard::probePath())->mode, profiles::GpuMode::Automatic);
+
+        // Backup and restore through the page: export, lose the profile, import it back.
+        const QString backup = dir.filePath(QStringLiteral("profiles-backup.json"));
+        QVERIFY(page.exportTo(backup));
+        QString error;
+        QVERIFY(store.remove(store.find(probeguard::probePath())->id, &error));
+        QVERIFY(page.importFrom(backup, false));
+        QVERIFY(page.resultText().contains(QStringLiteral("1 profile(s) imported")));
+        QCOMPARE(page.findChild<QListWidget*>()->count(), 1);
+        QVERIFY(!store.find(probeguard::probePath())->lastVerification.has_value()); // results stay with the PC they were made on
     }
 
     // A program's own GPU option through the page: a user-defined known option for the probe

@@ -32,4 +32,20 @@ QString resolveCurrentExecutable(const QString& exePath);
 // A profile for an executable the user picked (not saved).
 AppProfile newProfile(const QString& exePath, const QString& name = {});
 
+// ---- backup / transfer ------------------------------------------------------------------------------
+// One JSON document with every profile: { "gpuFusionProfiles": 1, "exported": ..., "profiles": [...] }.
+QByteArray exportProfiles(const QList<AppProfile>& profiles);
+
+struct ImportResult {
+    bool ok = false;               // the document could be read
+    QString error;
+    int imported = 0, replaced = 0, skipped = 0;
+    QStringList missingPrograms;   // imported, but the executable is not on this PC
+    QString summary() const;
+};
+// Adds the profiles of an exported document to `store`. Existing profiles (same program) are kept
+// unless `replace`. Verification results and applied Windows values are not imported — they describe
+// the PC they were made on — and no Windows setting is changed: modes take effect when applied.
+ImportResult importProfiles(ProfileStore& store, const QByteArray& document, bool replace);
+
 } // namespace gf::profiles
