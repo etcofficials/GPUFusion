@@ -71,7 +71,8 @@ private:
     void launchSelected();
     void showVerdict(const profiles::AppProfile& p, const mon::UsageVerdict& v);
     void showLastVerification(const profiles::AppProfile& p);
-    std::optional<profiles::AppProfile> selected() const;
+    std::optional<profiles::AppProfile> selected() const;    // cached (m_current)
+    std::optional<profiles::AppProfile> loadSelected() const; // from disk
     profiles::GpuMode chosenMode() const;
     profiles::CapabilityInputs inputsFor(const profiles::AppProfile& p);
     void refreshKnownOption(const profiles::AppProfile& p);
@@ -100,6 +101,8 @@ private:
     QPointer<QThread> m_thread;
     std::atomic<bool> m_cancel{ false };
     bool m_loading = false;   // filling the editor from a profile: no change handlers
+    bool m_closing = false;   // waiting for a running instance to close (nested event loop): stay busy
+    std::optional<profiles::AppProfile> m_current; // the selected profile as last read from disk
     RunningPolicy m_runningPolicy = RunningPolicy::Ask;
     QString m_inputsExe;      // capability inputs cached per executable (imports are read from disk)
     std::optional<profiles::CapabilityInputs> m_inputs;

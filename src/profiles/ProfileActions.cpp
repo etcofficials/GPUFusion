@@ -151,6 +151,12 @@ mon::UsageVerdict evaluateProfileEvidence(mon::UsageEvidence e, GpuMode mode, co
         }
     }
     mon::UsageVerdict v = mon::evaluateUsage(e);
+    // Both asks for both GPUs: rendering on the discrete GPU plus work on the other (even of unknown type,
+    // from a driver that does not name engines) is what it asks for.
+    if (mode == GpuMode::Both && v.outcome == mon::UsageOutcome::Confirmed && !v.otherAdaptersWithUnnamedWork.isEmpty()) {
+        v.outcome = mon::UsageOutcome::BothAdapters;
+        v.headline = QStringLiteral("Partly: the program used %1 and %2.").arg(e.requestedName, v.otherAdaptersWithUnnamedWork.join(QStringLiteral(" and ")));
+    }
     if (mode == GpuMode::Both && v.outcome == mon::UsageOutcome::BothAdapters) {
         // What Both asks for. This shows that both GPUs did work for the program, not that its rendering was sped up.
         v.headline.replace(QStringLiteral("Partly: "), QStringLiteral("Both GPUs used: "));

@@ -13,6 +13,8 @@
 
 #include "preferences/PreferenceModel.h"
 
+#include <QHash>
+
 namespace gf::pref {
 
 // A physical GPU the user can pick (built by the caller from hardware detection).
@@ -46,6 +48,14 @@ struct ChoicePlan {
 
 // Picks the integrated / discrete adapter from the list (nullopt when there is not exactly one kind).
 std::optional<SelectableGpu> gpuFor(GpuChoice choice, const QList<SelectableGpu>& gpus);
+
+// ---- placeholders ---------------------------------------------------------------------------------
+// The GPU placeholders shared by profile launch arguments and the job dispatcher's command templates:
+//   {luid} {luid_pair} {luid_high} {luid_low} {dxgi_index} {vendor_id} {vendor_hex} {gpu_name}
+QHash<QString, QString> gpuPlaceholderValues(const SelectableGpu& gpu);
+// Replaces every "{name}" whose name is in `values`, in ONE pass: text that a value inserts (a file
+// name containing "{job}", say) is never expanded again. Unknown "{...}" are left as they are.
+QString expandPlaceholders(const QString& text, const QHash<QString, QString>& values);
 
 ChoicePlan planChoice(GpuChoice choice, const QList<SelectableGpu>& gpus, const std::optional<VerificationResult>& verification);
 

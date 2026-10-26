@@ -56,6 +56,7 @@ private:
     QPushButton* m_profileButton;
     QTimer m_preferenceTimer;
     QString m_detailsKey;
+    QString m_profileSignature; // profile files (name, size, time) + GPUs last loaded into the model
     bool m_autoSelected = false;
     bool m_userPicked = false;
 };

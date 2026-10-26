@@ -88,7 +88,7 @@ void KmtProcessProvider::sample(const QList<ProcessInfo>& processes, QHash<quint
                 *skipped << p;
             continue;
         }
-        ++*inspectable;
+        bool denied = false; // opened, but the statistics query itself was refused
         const qint64 now = now100ns();
         for (auto it = m_adapters.cbegin(); it != m_adapters.cend(); ++it) {
             const AdapterState& st = *it;
@@ -105,6 +105,11 @@ void KmtProcessProvider::sample(const QList<ProcessInfo>& processes, QHash<quint
                 q.QueryProcessNode.NodeId = ULONG(node);
                 const NTSTATUS s = D3DKMTQueryStatistics(&q);
                 if (s == kStatusInvalidParameter && node == 0) { // the process has never used this adapter
+                    hasContext = false;
+                    break;
+                }
+                if (s != 0 && node == 0) { // e.g. access denied with only the limited right: unknown, not idle
+                    denied = true;
                     hasContext = false;
                     break;
                 }
@@ -158,6 +163,13 @@ void KmtProcessProvider::sample(const QList<ProcessInfo>& processes, QHash<quint
             out[p.pid] << u;
         }
         CloseHandle(h);
+        if (denied) { // counted, and named by callers, as not inspectable rather than idle
+            ++*notInspectable;
+            if (skipped)
+                *skipped << p;
+        } else {
+            ++*inspectable;
+        }
     }
     m_sampled = true;
     // Drop baselines of processes that exited or released the adapter.

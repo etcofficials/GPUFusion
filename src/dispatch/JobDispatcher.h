@@ -68,7 +68,12 @@ struct RunResult {
     QMap<int, int> jobsPerWorker() const;
 };
 using Progress = std::function<void(int done, int total)>;
-// Runs every job once on the `use`d workers (one job at a time per entry; a worker listed twice runs
+// Jobs whose output path is one of the inputs or another job's output (e.g. pattern "{name}" in the
+// input folder): such a job is refused, because its output is deleted before it runs. Returns one
+// line per refused job; their indexes go to *blockedJobs.
+QStringList unsafeOutputs(const QList<Job>& jobs, QList<int>* blockedJobs = nullptr);
+
+// Runs every job once on the `use`d workers (refusing unsafe outputs, see unsafeOutputs) (one job at a time per entry; a worker listed twice runs
 // two jobs at once; dynamic queue). Stragglers are avoided: a worker does not take the next job when
 // another GPU would finish all remaining jobs before this worker finished that one — judged from the
 // job times measured so far in this run, or from `expectedJobMs` (worker index -> ms per job, e.g.

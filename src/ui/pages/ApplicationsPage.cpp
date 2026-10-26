@@ -177,8 +177,21 @@ void ApplicationsPage::reloadPreferences()
     const win::GpuPreferences prefs = win::readUserGpuPreferences();
     m_model->setPreferences(prefs.byPath);
     const auto& detection = m_context.hardware().latest();
-    if (m_context.profiles())
-        m_model->setProfiles(m_context.profiles()->list(), detection ? profiles::selectableGpus(*detection) : QList<pref::SelectableGpu>{});
+    if (!m_context.profiles())
+        return;
+    // Re-read the profiles only when the profile folder or the GPUs changed: this runs every 10 s on the
+    // UI thread, and the data folder may be on a slow or failing disk.
+    const QList<pref::SelectableGpu> gpus = detection ? profiles::selectableGpus(*detection) : QList<pref::SelectableGpu>{};
+    QStringList signature;
+    for (const QFileInfo& fi : QDir(m_context.profiles()->directory()).entryInfoList({ QStringLiteral("*.json") }, QDir::Files))
+        signature << QStringLiteral("%1|%2|%3").arg(fi.fileName()).arg(fi.size()).arg(fi.lastModified().toMSecsSinceEpoch());
+    for (const pref::SelectableGpu& g : gpus)
+        signature << g.luid;
+    const QString joined = signature.join(u';');
+    if (joined == m_profileSignature)
+        return;
+    m_profileSignature = joined;
+    m_model->setProfiles(m_context.profiles()->list(), gpus);
 }
 
 void ApplicationsPage::onAdaptersChanged()

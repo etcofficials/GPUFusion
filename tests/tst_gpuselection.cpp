@@ -231,15 +231,17 @@ private Q_SLOTS:
         QVERIFY(v.details.join(u' ').contains(QStringLiteral("probably a launcher")));
     }
 
-    void unnamedWorkOnTheOtherAdapterCountsAsBoth()
+    // Rendering on the requested GPU stays confirmed when the other adapter only shows work of unknown
+    // type (possibly incidental); that work is reported and recorded for a "Both GPUs" profile.
+    void unnamedWorkOnTheOtherAdapterIsReportedNotAContradiction()
     {
         UsageEvidence e = evidence(kNvLuid);
         addRendering(e, kNvLuid, QStringLiteral("3D"), 45);
         addRendering(e, kIntelLuid, QStringLiteral("Engine 0"), 90);
         const UsageVerdict v = evaluateUsage(e);
-        QCOMPARE(v.outcome, UsageOutcome::BothAdapters);
+        QCOMPARE(v.outcome, UsageOutcome::Confirmed);
         QVERIFY(v.stages[3].detail.contains(QStringLiteral("does not report engine types")));
-        QVERIFY(v.headline.startsWith(QStringLiteral("Partly")));
+        QCOMPARE(v.otherAdaptersWithUnnamedWork, QStringList{ kIntel.name });
     }
 
     // A sandboxed process that cannot be opened must not turn into a silent "no activity" claim.

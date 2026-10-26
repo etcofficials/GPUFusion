@@ -219,11 +219,16 @@ UsageVerdict evaluateUsage(const UsageEvidence& e)
         otherUnnamed.remove(req);
         otherUnnamed.subtract(others);
         if (reqRenders && others.isEmpty() && !otherUnnamed.isEmpty()) {
-            v.outcome = UsageOutcome::BothAdapters;
-            confirmed.state = StageState::Inconclusive;
-            confirmed.detail = QStringLiteral("The program rendered on %1 and also did GPU work on %2, whose driver does not report "
-                                              "engine types.").arg(requested, names(otherUnnamed));
-            v.headline = QStringLiteral("Partly: the program used %1 and %2.").arg(requested, names(otherUnnamed));
+            // Its rendering ran on the requested GPU; the other work is of unknown type and may be incidental.
+            v.outcome = UsageOutcome::Confirmed;
+            confirmed.state = StageState::Passed;
+            confirmed.detail = QStringLiteral("3D/compute work of the program's processes ran on %1. It also did GPU work of unknown type on "
+                                              "%2 (its driver does not report engine types), which may be incidental.")
+                                   .arg(requested, names(otherUnnamed));
+            v.headline = QStringLiteral("Confirmed: the program rendered on %1.").arg(requested);
+            for (quint64 l : std::as_const(otherUnnamed))
+                v.otherAdaptersWithUnnamedWork << adapterNames.value(l, QStringLiteral("another adapter"));
+            v.otherAdaptersWithUnnamedWork.sort();
         } else if (reqRenders && others.isEmpty()) {
             v.outcome = UsageOutcome::Confirmed;
             confirmed.state = StageState::Passed;

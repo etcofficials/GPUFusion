@@ -284,7 +284,7 @@ void SettingsPage::save()
     // A newly chosen backup folder gets a first backup now, not only at the next profile change.
     const Settings& s = m_context.settings();
     if (!s.profileBackupFolder.isEmpty() && m_context.profiles()) {
-        const profiles::BackupResult r = profiles::backupProfiles(m_context.profiles()->list(), s.profileBackupFolder, s.profileBackupsKept);
+        const profiles::BackupResult r = profiles::backupStore(*m_context.profiles(), s.profileBackupFolder, s.profileBackupsKept);
         m_status->setText(!r.error.isEmpty() ? tr("Saved, but the profile backup failed: %1").arg(r.error)
                           : r.written       ? tr("Saved. Profiles backed up to %1.").arg(r.path)
                                             : tr("Saved. The newest backup already holds the current profiles."));

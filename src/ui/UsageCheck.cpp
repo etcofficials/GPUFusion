@@ -1,19 +1,14 @@
 #include "ui/UsageCheck.h"
 
+#include "profiles/ProfileActions.h"
+
 namespace gf::ui {
 
 using namespace gf::pref;
 
 QList<SelectableGpu> selectableGpus(const hw::DetectionResult& detection)
 {
-    QList<SelectableGpu> out;
-    for (const hw::Adapter& a : detection.adapters) {
-        if (!a.dxgi || a.isSoftware())
-            continue;
-        out << SelectableGpu{ a.name(), a.dxgi->vendorId, hw::formatLuid(a.dxgi->luid), a.classification.value == hw::AdapterClass::Integrated,
-                              a.dxgi->index };
-    }
-    return out;
+    return profiles::selectableGpus(detection); // one definition for the whole app
 }
 
 mon::UsageVerdict evaluateForApp(mon::UsageEvidence e, const PreferenceManager& manager, const hw::DetectionResult& detection,

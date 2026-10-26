@@ -320,6 +320,13 @@ void GpuManagerPage::refreshList()
 
 std::optional<AppProfile> GpuManagerPage::selected() const
 {
+    // Read once per selection or list change (refreshEditor), not on every keystroke: the data folder
+    // may be on a slow or failing disk.
+    return m_current;
+}
+
+std::optional<AppProfile> GpuManagerPage::loadSelected() const
+{
     if (!m_context.profiles() || !m_list->currentItem())
         return std::nullopt;
     return m_context.profiles()->find(m_list->currentItem()->data(Qt::UserRole).toString());
@@ -578,10 +585,11 @@ void GpuManagerPage::selectMode(GpuMode mode)
 
 void GpuManagerPage::refreshEditor()
 {
+    m_current = loadSelected();
     const auto p = selected();
     m_editor->setEnabled(p.has_value());
-    m_remove->setEnabled(p.has_value() && !m_thread);
-    m_addVariant->setEnabled(p.has_value() && !m_thread);
+    m_remove->setEnabled(p.has_value() && !m_thread && !m_closing);
+    m_addVariant->setEnabled(p.has_value() && !m_thread && !m_closing);
     if (!p) {
         m_header->setText(m_context.profiles() ? tr("Add a program to choose its GPU.") : tr("Profiles are not available."));
         m_capability->clear();
@@ -638,6 +646,7 @@ QString GpuManagerPage::resultText() const { return m_result->text(); }
 
 void GpuManagerPage::setBusy(bool busy)
 {
+    busy = busy || m_closing;
     const auto p = selected();
     const bool exists = p && QFileInfo::exists(profiles::resolveCurrentExecutable(p->exePath));
     m_apply->setEnabled(!busy && exists);
@@ -689,6 +698,8 @@ void GpuManagerPage::applySelected(bool confirm)
 
 bool GpuManagerPage::handleRunning(const QString& exe, const QString& action)
 {
+    if (m_closing) // already waiting for a program to close (re-entered from the nested event loop)
+        return false;
     const QList<profiles::RunningInstance> running = profiles::runningInstances(exe);
     if (running.isEmpty() || m_runningPolicy == RunningPolicy::Continue)
         return true;
@@ -719,12 +730,14 @@ bool GpuManagerPage::handleRunning(const QString& exe, const QString& action)
     QEventLoop loop;
     QThread* worker = QThread::create([exe, outcome] { *outcome = profiles::closeGracefully(exe); });
     connect(worker, &QThread::finished, &loop, &QEventLoop::quit);
+    m_closing = true; // setBusy keeps everything disabled, whatever refreshes the editor meanwhile
     setBusy(true);
     worker->start();
     loop.exec(); // the window stays responsive while the program closes
     worker->wait();
     delete worker;
-    setBusy(false);
+    m_closing = false;
+    setBusy(m_thread != nullptr);
     m_result->setText(QStringLiteral("<span style='color:%1'>%2</span>")
                           .arg((outcome->ok() ? colors().textMuted : colors().warn).name(), outcome->message.toHtmlEscaped()));
     return outcome->ok();

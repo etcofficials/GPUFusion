@@ -222,7 +222,7 @@ int main(int argc, char* argv[])
         const gf::Settings& s = context.settings();
         if (s.profileBackupFolder.trimmed().isEmpty())
             return;
-        const gf::profiles::BackupResult r = gf::profiles::backupProfiles(profileStore.list(), s.profileBackupFolder, s.profileBackupsKept);
+        const gf::profiles::BackupResult r = gf::profiles::backupStore(profileStore, s.profileBackupFolder, s.profileBackupsKept);
         if (!r.error.isEmpty())
             qCWarning(lcPrefs).noquote() << "Profile backup failed:" << r.error;
         else if (r.written)

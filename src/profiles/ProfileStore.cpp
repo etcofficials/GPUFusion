@@ -25,22 +25,27 @@ QString ProfileStore::pathFor(const QString& id) const
     return QDir(m_dir).filePath(id + QStringLiteral(".json"));
 }
 
-QList<AppProfile> ProfileStore::list() const
+QList<AppProfile> ProfileStore::list(QStringList* unreadable) const
 {
     QList<AppProfile> out;
     for (const QFileInfo& fi : QDir(m_dir).entryInfoList({ QStringLiteral("*.json") }, QDir::Files)) {
         QFile f(fi.absoluteFilePath());
         if (!f.open(QIODevice::ReadOnly)) {
             qCWarning(lcPrefs).noquote() << "GPU profile not readable:" << QDir::toNativeSeparators(fi.absoluteFilePath()) << f.errorString();
+            if (unreadable)
+                *unreadable << QDir::toNativeSeparators(fi.absoluteFilePath());
             continue;
         }
         QJsonParseError err{};
         const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
         if (auto p = AppProfile::fromJson(doc.object()))
             out << *p;
-        else // damaged (e.g. by a failing disk) or from a newer GPU Fusion: left in place, not overwritten
+        else { // damaged (e.g. by a failing disk) or from a newer GPU Fusion: left in place, not overwritten
             qCWarning(lcPrefs).noquote() << "GPU profile ignored (invalid or newer format):" << QDir::toNativeSeparators(fi.absoluteFilePath())
                                          << (err.error != QJsonParseError::NoError ? err.errorString() : QString());
+            if (unreadable)
+                *unreadable << QDir::toNativeSeparators(fi.absoluteFilePath());
+        }
     }
     QCollator collator;
     collator.setCaseSensitivity(Qt::CaseInsensitive);
@@ -163,6 +168,20 @@ BackupResult backupProfiles(const QList<AppProfile>& profiles, const QString& fo
         if (QFile::remove(dir.filePath(existing[i])))
             ++r.removed;
     return r;
+}
+
+BackupResult backupStore(const ProfileStore& store, const QString& folder, int keep)
+{
+    QStringList unreadable;
+    const QList<AppProfile> profiles = store.list(&unreadable);
+    if (!unreadable.isEmpty()) {
+        BackupResult r;
+        r.error = QStringLiteral("not backed up: %1 profile file(s) could not be read (%2). The existing backups are kept, so they "
+                                 "still contain those profiles; restore them with Import….")
+                      .arg(unreadable.size()).arg(unreadable.join(QStringLiteral(", ")));
+        return r;
+    }
+    return backupProfiles(profiles, folder, keep);
 }
 
 bool onSameVolume(const QString& a, const QString& b)

@@ -1,6 +1,7 @@
 #include "dispatch/JobDispatcher.h"
 
 #include "core/Logging.h"
+#include "preferences/GpuSelection.h"
 #include "workloads/VideoDecode.h"
 
 #include <QCryptographicHash>
@@ -88,11 +89,10 @@ QList<Job> jobsFor(const QStringList& inputs, const QString& outputDir, const QS
         j.input = inputs[i];
         if (!outputPattern.isEmpty()) {
             const QFileInfo in(inputs[i]);
-            QString name = outputPattern;
-            name.replace(QLatin1StringView("{stem}"), in.completeBaseName())
-                .replace(QLatin1StringView("{name}"), in.fileName())
-                .replace(QLatin1StringView("{ext}"), in.suffix())
-                .replace(QLatin1StringView("{job}"), QString::number(i));
+            const QString name = pref::expandPlaceholders(outputPattern, { { QStringLiteral("stem"), in.completeBaseName() },
+                                                                           { QStringLiteral("name"), in.fileName() },
+                                                                           { QStringLiteral("ext"), in.suffix() },
+                                                                           { QStringLiteral("job"), QString::number(i) } });
             j.output = QDir::toNativeSeparators(QDir(outputDir).filePath(name));
         }
         jobs << j;
@@ -120,14 +120,57 @@ bool shouldTakeJob(double myMs, double fastestOtherMs, int remaining)
     return myMs <= 0 || fastestOtherMs <= 0 || myMs <= remaining * fastestOtherMs;
 }
 
+QStringList unsafeOutputs(const QList<Job>& jobs, QList<int>* blockedJobs)
+{
+    // A job's output is deleted before it runs (a stale file must not count as its output), so it must
+    // never be one of the inputs or another job's output.
+    QHash<QString, int> inputs, outputs;
+    for (const Job& j : jobs) {
+        inputs.insert(QFileInfo(j.input).absoluteFilePath().toLower(), j.index);
+        if (!j.output.isEmpty())
+            outputs[QFileInfo(j.output).absoluteFilePath().toLower()] += 1;
+    }
+    QStringList problems;
+    for (const Job& j : jobs) {
+        if (j.output.isEmpty())
+            continue;
+        const QString key = QFileInfo(j.output).absoluteFilePath().toLower();
+        QString why;
+        if (inputs.contains(key))
+            why = QStringLiteral("its output %1 is an input file and would be overwritten").arg(QDir::toNativeSeparators(j.output));
+        else if (outputs.value(key) > 1)
+            why = QStringLiteral("its output %1 is also another job's output").arg(QDir::toNativeSeparators(j.output));
+        if (!why.isEmpty()) {
+            problems << QStringLiteral("Job %1 (%2): %3").arg(j.index).arg(QFileInfo(j.input).fileName(), why);
+            if (blockedJobs)
+                *blockedJobs << j.index;
+        }
+    }
+    return problems;
+}
+
 RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QList<Job>& jobs, const Executor& executor,
                   const std::atomic<bool>* cancel, const Progress& progress, const QMap<int, double>& expectedJobMs)
 {
     RunResult run;
     run.workers = use;
     run.jobs.resize(jobs.size());
-    int next = 0;            // guarded by `mutex`
-    int done = 0;
+    // Jobs whose output would overwrite an input or another job's output are refused, never run.
+    QList<int> blocked;
+    const QStringList problems = unsafeOutputs(jobs, &blocked);
+    for (int b : std::as_const(blocked)) {
+        run.jobs[b].job = b;
+        run.jobs[b].error = QStringLiteral("refused: %1").arg(problems.value(int(blocked.indexOf(b))).section(QStringLiteral(": "), 1));
+    }
+    QList<int> queue;
+    for (int j = 0; j < jobs.size(); ++j)
+        if (!blocked.contains(j))
+            queue << j;
+    int next = 0;            // into `queue`; guarded by `mutex`
+    int done = int(blocked.size());
+    QMap<int, int> active;   // worker -> threads still taking jobs; guarded by `mutex`
+    for (int w : use)
+        ++active[w];
     QMap<int, QPair<double, int>> measured; // worker -> (total ms, jobs) in this run
     QMutex mutex; // not std::mutex: its constexpr constructor (VS 17.10+) crashes with an older msvcp140.dll on PATH
     auto msPerJob = [&](int w) -> double { // caller holds `mutex`
@@ -139,21 +182,31 @@ RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QLi
     std::vector<std::thread> threads;
     for (int w : use) {
         threads.emplace_back([&, w] {
+            auto leave = [&] { --active[w]; }; // caller holds `mutex`
             for (;;) {
-                if (cancel && cancel->load())
+                if (cancel && cancel->load()) {
+                    QMutexLocker lock(&mutex);
+                    leave();
                     return;
+                }
                 int j = -1;
                 {
                     QMutexLocker lock(&mutex);
-                    if (next >= jobs.size())
+                    if (next >= queue.size()) {
+                        leave();
                         return;
+                    }
+                    // Compare only with workers that are still taking jobs: one that has stopped will
+                    // not do the remaining jobs, so the last active worker never stops early.
                     double fastestOther = 0;
-                    for (int o : use)
-                        if (o != w && msPerJob(o) > 0 && (fastestOther <= 0 || msPerJob(o) < fastestOther))
-                            fastestOther = msPerJob(o);
-                    if (!shouldTakeJob(msPerJob(w), fastestOther, int(jobs.size()) - next))
-                        return; // remaining jobs only get fewer: this worker is done
-                    j = next++;
+                    for (auto a = active.cbegin(); a != active.cend(); ++a)
+                        if (a.key() != w && a.value() > 0 && msPerJob(a.key()) > 0 && (fastestOther <= 0 || msPerJob(a.key()) < fastestOther))
+                            fastestOther = msPerJob(a.key());
+                    if (!shouldTakeJob(msPerJob(w), fastestOther, int(queue.size()) - next)) {
+                        leave(); // remaining jobs only get fewer: this worker is done
+                        return;
+                    }
+                    j = queue[next++];
                 }
                 QElapsedTimer t;
                 t.start();
@@ -192,22 +245,14 @@ RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QLi
 
 QString expandPlaceholders(const QString& text, const Worker& w, const Job& j)
 {
-    QString s = text;
-    const qint32 high = qint32(w.luid >> 32);       // LUID.HighPart is signed, LowPart unsigned
-    const quint32 low = quint32(w.luid & 0xFFFFFFFFu);
-    s.replace(QLatin1StringView("{luid_pair}"), QStringLiteral("%1,%2").arg(high).arg(low))
-        .replace(QLatin1StringView("{luid_high}"), QString::number(high))
-        .replace(QLatin1StringView("{luid_low}"), QString::number(low))
-        .replace(QLatin1StringView("{dxgi_index}"), QString::number(w.dxgiIndex))
-        .replace(QLatin1StringView("{luid}"), hw::formatLuid(w.luid))
-        .replace(QLatin1StringView("{vendor_id}"), QString::number(w.vendorId))
-        .replace(QLatin1StringView("{vendor_hex}"), QStringLiteral("0x%1").arg(w.vendorId, 4, 16, QLatin1Char('0')))
-        .replace(QLatin1StringView("{gpu_name}"), w.name)
-        .replace(QLatin1StringView("{input}"), j.input)
-        .replace(QLatin1StringView("{output}"), j.output)
-        .replace(QLatin1StringView("{stem}"), QFileInfo(j.input).completeBaseName())
-        .replace(QLatin1StringView("{job}"), QString::number(j.index));
-    return s;
+    // The GPU placeholders are the same as in profile launch arguments (one implementation).
+    QHash<QString, QString> values = pref::gpuPlaceholderValues(
+        pref::SelectableGpu{ w.name, w.vendorId, hw::formatLuid(w.luid), w.integrated, w.dxgiIndex });
+    values.insert(QStringLiteral("input"), j.input);
+    values.insert(QStringLiteral("output"), j.output);
+    values.insert(QStringLiteral("stem"), QFileInfo(j.input).completeBaseName());
+    values.insert(QStringLiteral("job"), QString::number(j.index));
+    return pref::expandPlaceholders(text, values);
 }
 
 QStringList commandLine(const QString& commandTemplate, const Worker& w, const Job& j)

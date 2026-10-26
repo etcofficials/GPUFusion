@@ -89,6 +89,10 @@ struct UsageVerdict {
     QString headline;
     QStringList details;
     QStringList renderingExecutables;        // which executables of the tree rendered (launcher resolution)
+    // With Confirmed: adapters other than the requested one where the program did GPU work of unknown
+    // type (drivers that do not name engines). Not a contradiction of the confirmation — possibly
+    // incidental — but evidence that the program used them, which a "Both GPUs" profile asks for.
+    QStringList otherAdaptersWithUnnamedWork;
 };
 
 // Thresholds: an adapter "renders" for the application if its render activity reached

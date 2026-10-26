@@ -325,20 +325,7 @@ std::optional<pref::SelectableGpu> modeGpu(GpuMode mode, const QList<pref::Selec
 
 QString expandGpuPlaceholders(const QString& text, const pref::SelectableGpu& gpu)
 {
-    // LUID text "HHHHHHHH_LLLLLLLL": HighPart is a signed LONG, LowPart an unsigned DWORD.
-    const QStringList parts = gpu.luid.split(u'_');
-    const qint32 high = parts.size() == 2 ? qint32(parts[0].toUInt(nullptr, 16)) : 0;
-    const quint32 low = parts.size() == 2 ? parts[1].toUInt(nullptr, 16) : 0;
-    QString s = text;
-    s.replace(QLatin1StringView("{luid_pair}"), QStringLiteral("%1,%2").arg(high).arg(low))
-        .replace(QLatin1StringView("{luid_high}"), QString::number(high))
-        .replace(QLatin1StringView("{luid_low}"), QString::number(low))
-        .replace(QLatin1StringView("{luid}"), gpu.luid)
-        .replace(QLatin1StringView("{dxgi_index}"), QString::number(gpu.dxgiIndex))
-        .replace(QLatin1StringView("{vendor_id}"), QString::number(gpu.vendorId))
-        .replace(QLatin1StringView("{vendor_hex}"), QStringLiteral("0x%1").arg(gpu.vendorId, 4, 16, QLatin1Char('0')))
-        .replace(QLatin1StringView("{gpu_name}"), gpu.name);
-    return s;
+    return pref::expandPlaceholders(text, pref::gpuPlaceholderValues(gpu));
 }
 
 QStringList launchArguments(const QString& arguments, GpuMode mode, const QList<pref::SelectableGpu>& gpus)

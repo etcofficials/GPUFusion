@@ -1,5 +1,7 @@
 #include "preferences/GpuSelection.h"
 
+#include <QRegularExpression>
+
 namespace gf::pref {
 
 namespace {
@@ -51,6 +53,40 @@ QString enforcementText(Enforcement e)
     case Enforcement::Unknown:        return QStringLiteral("Unknown — run the verification");
     }
     return {};
+}
+
+QHash<QString, QString> gpuPlaceholderValues(const SelectableGpu& gpu)
+{
+    // LUID text "HHHHHHHH_LLLLLLLL": HighPart is a signed LONG, LowPart an unsigned DWORD.
+    const QStringList parts = gpu.luid.split(u'_');
+    const qint32 high = parts.size() == 2 ? qint32(parts[0].toUInt(nullptr, 16)) : 0;
+    const quint32 low = parts.size() == 2 ? parts[1].toUInt(nullptr, 16) : 0;
+    return { { QStringLiteral("luid"), gpu.luid },
+             { QStringLiteral("luid_pair"), QStringLiteral("%1,%2").arg(high).arg(low) },
+             { QStringLiteral("luid_high"), QString::number(high) },
+             { QStringLiteral("luid_low"), QString::number(low) },
+             { QStringLiteral("dxgi_index"), QString::number(gpu.dxgiIndex) },
+             { QStringLiteral("vendor_id"), QString::number(gpu.vendorId) },
+             { QStringLiteral("vendor_hex"), QStringLiteral("0x%1").arg(gpu.vendorId, 4, 16, QLatin1Char('0')) },
+             { QStringLiteral("gpu_name"), gpu.name } };
+}
+
+QString expandPlaceholders(const QString& text, const QHash<QString, QString>& values)
+{
+    static const QRegularExpression token(QStringLiteral(R"(\{([a-z_]+)\})"));
+    QString out;
+    qsizetype last = 0;
+    for (auto it = token.globalMatch(text); it.hasNext();) {
+        const QRegularExpressionMatch m = it.next();
+        const auto value = values.constFind(m.captured(1));
+        if (value == values.cend())
+            continue;
+        out += QStringView(text).mid(last, m.capturedStart() - last);
+        out += *value;
+        last = m.capturedEnd();
+    }
+    out += QStringView(text).mid(last);
+    return out;
 }
 
 std::optional<SelectableGpu> gpuFor(GpuChoice choice, const QList<SelectableGpu>& gpus)

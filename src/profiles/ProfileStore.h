@@ -16,7 +16,9 @@ public:
     explicit ProfileStore(QString directory);
 
     QString directory() const { return m_dir; }
-    QList<AppProfile> list() const;                       // sorted by name
+    // Sorted by name. Files that cannot be read or parsed are skipped (and logged); `unreadable`, if
+    // given, receives their paths.
+    QList<AppProfile> list(QStringList* unreadable = nullptr) const;
     std::optional<AppProfile> find(const QString& idOrExe) const;
     bool save(AppProfile& profile, QString* error);        // fills id/created/modified
     bool remove(const QString& id, QString* error);
@@ -47,6 +49,10 @@ struct BackupResult {
     int removed = 0;            // old backups deleted beyond `keep`
 };
 BackupResult backupProfiles(const QList<AppProfile>& profiles, const QString& folder, int keep);
+// The automatic backup of a store (used after every change and when the setting is saved). If any
+// profile file cannot be read — e.g. damaged by a failing disk — nothing is written: a backup without
+// those profiles would, after `keep` more changes, rotate away every backup that still has them.
+BackupResult backupStore(const ProfileStore& store, const QString& folder, int keep);
 // Whether two paths are on the same drive/volume (a backup there does not survive that drive failing).
 bool onSameVolume(const QString& a, const QString& b);
 

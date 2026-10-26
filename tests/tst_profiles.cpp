@@ -323,6 +323,18 @@ private Q_SLOTS:
 
         QVERIFY(onSameVolume(m_dir.path(), folder));
         QVERIFY(!backupProfiles(store.list(), QString(), 3).error.isEmpty());
+
+        // A damaged profile file: no backup is written, so the backups that still hold it are not rotated away.
+        const QStringList before = QDir(folder).entryList({ QStringLiteral("gpufusion-profiles-*.json") }, QDir::Files);
+        QFile damaged(QDir(store.directory()).filePath(QStringLiteral("damaged-000000000000.json")));
+        QVERIFY(damaged.open(QIODevice::WriteOnly));
+        damaged.write("{\"schemaVersion\":1,\"exePath\":\"C:\\\\x");
+        damaged.close();
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("GPU profile ignored")));
+        const BackupResult refused = backupStore(store, folder, 3);
+        QVERIFY(!refused.written);
+        QVERIFY2(refused.error.contains(QStringLiteral("could not be read")), qPrintable(refused.error));
+        QCOMPARE(QDir(folder).entryList({ QStringLiteral("gpufusion-profiles-*.json") }, QDir::Files), before);
     }
 
     void versionFoldersResolveToTheNewestCopy()
@@ -523,8 +535,10 @@ private Q_SLOTS:
         QCOMPARE(r.outcome, QStringLiteral("partly"));
         QVERIFY(v.headline.startsWith(QStringLiteral("Both GPUs used")));
         QVERIFY(v.details.join(u' ').contains(QStringLiteral("does not show that its rendering was split or faster")));
-        evaluateProfileEvidence(both, GpuMode::Discrete, kGpus, &r);
-        QVERIFY(!r.confirmed);                                      // Discrete asked for the GT 730 only
+        // Discrete: it rendered on the GT 730; the Intel work of unknown type may be incidental.
+        const UsageVerdict discrete = evaluateProfileEvidence(both, GpuMode::Discrete, kGpus, &r);
+        QVERIFY(r.confirmed);
+        QVERIFY(discrete.stages.last().detail.contains(QStringLiteral("may be incidental")));
     }
 
     // ---- discovery helpers ------------------------------------------------------------------------

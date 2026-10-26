@@ -126,6 +126,66 @@ private Q_SLOTS:
         QCOMPARE(same.failed(), 0); // two slots of the same GPU never hold each other back
     }
 
+    // The last worker still taking jobs never stops early: a worker that already stepped aside will
+    // not do the remaining jobs. (Before 1.11.1 the remaining jobs here were never run.)
+    void lastActiveWorkerFinishesTheQueue()
+    {
+        // Worker 1 is expected to be 5x slower: it steps aside at once (50 ms > 3 x 10 ms).
+        // Worker 0's first job then takes 300 ms, so its average rises far above 2 x 50 ms.
+        const Executor executor = [](const Job& j, const Worker& w, const std::atomic<bool>*) {
+            QThread::msleep(w.integrated ? 50 : (j.index == 0 ? 300 : 10));
+            JobResult r;
+            r.ok = true;
+            return r;
+        };
+        const RunResult r = runJobs(kWorkers, { 0, 1 }, jobsFor({ "a", "b", "c" }, {}, {}), executor, nullptr, {},
+                                    QMap<int, double>{ { 0, 10.0 }, { 1, 50.0 } });
+        QCOMPARE(r.failed(), 0);
+        QCOMPARE(r.jobsPerWorker().value(0), 3);
+    }
+
+    // A job's output is deleted before it runs, so an output that is an input file (or another job's
+    // output) is refused: the input must survive.
+    void outputsThatWouldOverwriteInputsAreRefused()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString a = QDir::toNativeSeparators(dir.filePath(QStringLiteral("a.txt")));
+        const QString b = QDir::toNativeSeparators(dir.filePath(QStringLiteral("b.txt")));
+        for (const QString& f : { a, b }) {
+            QFile file(f);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("precious");
+        }
+        const QString cmd = QDir(qEnvironmentVariable("SystemRoot")).filePath(QStringLiteral("System32\\cmd.exe"));
+        const Executor copy = commandExecutor(QStringLiteral("\"%1\" /c copy /y {input} {output}").arg(QDir::toNativeSeparators(cmd)));
+        // Pattern {name} into the input folder: every output IS its input.
+        const QList<Job> sameFolder = jobsFor({ a, b }, dir.path(), QStringLiteral("{name}"));
+        QCOMPARE(unsafeOutputs(sameFolder).size(), 2);
+        const RunResult r = runJobs(kWorkers, { 0 }, sameFolder, copy);
+        QCOMPARE(r.failed(), 2);
+        QVERIFY(r.jobs[0].error.startsWith(QStringLiteral("refused")));
+        for (const QString& f : { a, b }) {
+            QFile file(f);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(file.readAll(), QByteArray("precious"));                 // untouched
+        }
+        // Two inputs mapping to one output name.
+        const QList<Job> clash = jobsFor({ a, QDir::toNativeSeparators(dir.filePath(QStringLiteral("sub/a.txt"))) }, dir.filePath(QStringLiteral("out")),
+                                         QStringLiteral("{stem}.out"));
+        QCOMPARE(unsafeOutputs(clash).size(), 2);
+        QVERIFY(unsafeOutputs(jobsFor({ a, b }, dir.filePath(QStringLiteral("out")), QStringLiteral("{stem}.out"))).isEmpty());
+    }
+
+    // Placeholders are expanded in one pass: text inserted by a value is not expanded again.
+    void placeholdersExpandOnce()
+    {
+        const QList<Job> jobs = jobsFor({ QStringLiteral("C:\\in\\clip{job}.mp4") }, QStringLiteral("D:\\out"), QStringLiteral("{stem}-{job}.mkv"));
+        QCOMPARE(jobs[0].output, QStringLiteral("D:\\out\\clip{job}-0.mkv"));
+        QCOMPARE(expandPlaceholders(QStringLiteral("{input}|{job}|{unknown}"), kIntel, jobs[0]),
+                 QStringLiteral("C:\\in\\clip{job}.mp4|0|{unknown}"));
+    }
+
     void cancellationStopsTakingJobs()
     {
         std::atomic<bool> cancel{ false };
