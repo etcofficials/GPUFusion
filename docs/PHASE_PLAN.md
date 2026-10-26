@@ -275,9 +275,20 @@
   reachability) plus keyboard-only selection of benchmarks. It found and fixed: an unusable-by-keyboard
   benchmark list, unreachable read-only tables, and unnamed fields, selectors and tables.
 
+## 1.11 — Electron verification (not done)
+
+- Planned: verify the Chromium switch with Discord (Electron) by starting a separate instance with a
+  throwaway data folder. Blocked as interference with the user's own program, and not worked around.
+  Electron suggestions stay marked "not verified with this program".
+
+## 1.12 — final hardening, release 1.10.1 (2026-10-26)
+
+- Review of 1.6–1.10: fixed the live check for Automatic variants. Measured the Applications profile
+  column (14.1 → 4.4 ms per refresh with a per-process cache). Clean debug build passes.
+  [FINAL_REPORT.md](FINAL_REPORT.md) written.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.
-- Possible next steps:
-  - more known options, each verified before it is marked so (Electron apps such as Discord, when
-    they can be tested without disturbing the user).
+- Not done: Electron verification (Discord), see 1.11. More known options can be added, each
+  verified before it is marked so (users can add their own in `config\gpu-options.json`).

@@ -152,6 +152,9 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 
 ## Tests at release
 
+1.10.1: 34 CTest entries, 235 cases, all passing (release, reference-machine expectations); full suite
+and page start/close tests also pass in the debug build (2026-10-26). See [FINAL_REPORT.md](FINAL_REPORT.md).
+
 1.10.0: 34 CTest entries, 234 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.9.0: 33 CTest entries, 233 cases, all passing with reference-machine expectations (2026-10-26).

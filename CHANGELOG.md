@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.1 — 2026-10-26
+
+Final hardening.
+
+- Fix: on the Applications page, a program with an **Automatic** profile or variant was marked ✗ when
+  another of its profiles asked for a different GPU. GPU Fusion cannot tell which profile started the
+  program, and Automatic accepts any GPU, so it is now shown as consistent with that profile. The
+  details still name the other profile's request.
+- The Applications page's GPU-profile column is computed once per process per refresh instead of for
+  every cell on every repaint. Measured with 500 rows, 40 of them profiled: 14.1 ms → 4.4 ms per
+  refresh plus full repaint (1.4 ms without profiles).
+- **Final report** (`docs/FINAL_REPORT.md`, also in the packages): what was verified on the reference
+  PC, what is inferred, which hypotheses need the user's decision, and what was not done and why.
+- Clean debug build: the full suite and every page's start/close test pass.
+
 ## 1.10.0 — 2026-10-26
 
 Accessibility and keyboard use.
