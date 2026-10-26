@@ -17,8 +17,11 @@ public:
     // for development builds. Empty if not found.
     static QString docsFolder();
     bool isLoaded() const { return m_loaded; }
+    // GitHub-style anchor of a heading ("5. One program on two GPUs: variants" -> "5-one-program-on-two-gpus-variants").
+    static QString slugOf(const QString& heading);
 
 private:
+    void jumpToHeading(const QString& fragment);
     QTextBrowser* m_view;
     bool m_loaded = false;
 };

@@ -5,7 +5,11 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFileInfo>
+#include <QAbstractTextDocumentLayout>
+#include <QScrollBar>
+#include <QTextBlock>
 #include <QTextBrowser>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace gf::ui {
@@ -19,6 +23,29 @@ QString GuideDialog::docsFolder()
             return QDir::cleanPath(candidate);
     }
     return {};
+}
+
+QString GuideDialog::slugOf(const QString& heading)
+{
+    // GitHub's anchor rule: lower case, keep letters, digits, spaces and hyphens, spaces become hyphens.
+    QString s;
+    for (const QChar c : heading.toLower())
+        if (c.isLetterOrNumber() || c == u'-' || c == u' ')
+            s += c == u' ' ? u'-' : c;
+    return s;
+}
+
+void GuideDialog::jumpToHeading(const QString& fragment)
+{
+    for (QTextBlock b = m_view->document()->begin(); b.isValid(); b = b.next()) {
+        if (b.blockFormat().headingLevel() > 0 && slugOf(b.text()) == fragment) {
+            QTextCursor cursor(b);
+            m_view->setTextCursor(cursor);
+            const qreal top = m_view->document()->documentLayout()->blockBoundingRect(b).top();
+            m_view->verticalScrollBar()->setValue(int(top));
+            return;
+        }
+    }
 }
 
 GuideDialog::GuideDialog(const QString& document, QWidget* parent) : QDialog(parent)
@@ -37,6 +64,15 @@ GuideDialog::GuideDialog(const QString& document, QWidget* parent) : QDialog(par
         if (url.scheme() == QLatin1StringView("http") || url.scheme() == QLatin1StringView("https")) {
             QDesktopServices::openUrl(url);
             m_view->setSource(m_view->source()); // stay on the current page
+            return;
+        }
+        // Qt's Markdown import gives headings no anchors, so GitHub-style "#section" links (e.g. the
+        // contents list) are resolved here: after the browser's own (unsuccessful) jump, find the
+        // heading whose slug matches and show it at the top.
+        const QString file = QFileInfo(url.path()).fileName();
+        if (url.hasFragment() && (file.isEmpty() || file == QFileInfo(m_view->source().path()).fileName())) {
+            const QString fragment = url.fragment();
+            QTimer::singleShot(0, this, [this, fragment] { jumpToHeading(fragment); });
         }
     });
 
