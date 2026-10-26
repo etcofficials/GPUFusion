@@ -258,6 +258,11 @@
 - Several profiles per executable (class B within one program). Variants never use Windows'
   single per-executable value. Verified with two FFmpeg variants on the two GPUs.
 
+## 1.8 — live profile check (2026-10-26)
+
+- Passive verification of everyday use: the Applications page compares each running program's live
+  GPU activity with its profile(s). Nothing is launched. "GPU profile…" opens it in the GPU Manager.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

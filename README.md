@@ -9,7 +9,10 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: version 1.7.0.** New in 1.7: **profile variants**, several GPU profiles for one program
+> **Status: version 1.8.0.** New in 1.8: the Applications page shows, live, whether each running
+> program with a GPU profile is on the GPU its profile asks for (✓/✗), without launching anything.
+>
+> New in 1.7: **profile variants**, several GPU profiles for one program
 > (e.g. FFmpeg on the Intel GPU and on the GT 730, verified).
 >
 > New in 1.6: **export and import of GPU profiles** for backup or another PC.

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.0 — 2026-10-26
+
+- **Live GPU-profile check on the Applications page.** For every running program that has a GPU
+  profile, a new column compares the GPU it is using right now with the GPU its profile asks for:
+  ✓ (matches), ✗ (working on another GPU), *idle*, or *Automatic*. The tooltip and details panel
+  say where it runs and why a mismatch usually happens: it was not started through GPU Fusion, or
+  it was already running when the profile was applied. Nothing is launched for this check. Variants
+  count too.
+- **GPU profile…** button on a running process opens the program in the GPU Manager, creating its
+  profile if it has none.
+- Applications table columns rebalanced to fit without horizontal scrolling. The GPU column's
+  tooltip shows the full adapter name.
+
 ## 1.7.0 — 2026-10-26
 
 - **Profile variants: several GPU profiles for one program.** *Add variant…* in the GPU Manager

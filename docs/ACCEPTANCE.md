@@ -128,7 +128,16 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Different GPUs for the same program (class B within one program) | ✔ (programs with a GPU option / SDK) | two FFmpeg variants confirmed on each GPU (`tst_profiles_live`) |
 | Windows' single per-program value never contradicted | ✔ | variants never write or remove it; `tst_profiles::variantsNeverUseTheWindowsValue`, GUI test |
 
+## 1.8 — live profile check
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Everyday use checked against the profile without launching anything | ✔ | Applications "GPU profile" column; `tst_applications_ui` (✗ when started normally, ✓ with the option), `tst_processtable` |
+| No claim beyond the measurement | ✔ | "idle" when there is no GPU work; mismatch explained, not hidden |
+
 ## Tests at release
+
+1.8.0: 32 CTest entries, 232 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.7.0: 31 CTest entries, 230 cases, all passing with reference-machine expectations (2026-10-26).
 

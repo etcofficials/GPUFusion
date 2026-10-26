@@ -127,6 +127,24 @@ the probe with `--adapter 00000000_0000870F`, the Intel GPU's LUID at that boot
 (`tst_running_live`). With the program already running, the dialog waited; dismissing it started
 nothing and closed nothing.
 
+### Live check of running programs (1.8)
+
+The Applications page already measures which GPU every process is using. For programs with a GPU
+profile it now compares that with the profile, **without launching anything**:
+
+| Column | Meaning |
+|---|---|
+| ✓ *mode* | working on a GPU its profile (or one of its variants) asks for |
+| ✗ *mode* | working on another GPU (or the software renderer); the tooltip says which and why |
+| *mode* · idle | no GPU work right now, so nothing to compare |
+| Automatic | its profile does not ask for a GPU |
+
+A ✗ usually means the program was started another way than through GPU Fusion, which is how the
+program's own GPU option and the SDK apply, or that it was already running when a Windows preference
+was applied. *GPU profile…* opens the program in the GPU Manager. Tested with live monitoring
+(`tst_applications_ui`): the probe with an Integrated profile, started normally, was flagged ✗ on
+the GT 730; started with its own option on the Intel GPU, it showed ✓.
+
 ### Variants: several profiles for one program (1.7)
 
 *Add variant…* creates another profile for the same executable, with its own name (e.g. "Intel",
