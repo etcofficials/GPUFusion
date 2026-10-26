@@ -20,7 +20,7 @@ every mode the page shows what it can do **for this program on this PC**:
 | Mode | Class | Mechanism (strongest generic one that is justified) | Reference PC |
 |---|---|---|---|
 | Automatic | A | remove the program's Windows preference | Verified |
-| Integrated GPU | A | Windows preference *only if verified to work*; otherwise no value, and the GPU is passed to the program when GPU Fusion launches it (SDK) | **Only with the program's support**: Windows cannot place programs on the Intel GPU here. An SDK program was verified on Intel. |
+| Integrated GPU | A | Windows preference *only if verified to work*; otherwise no value, and the GPU is passed to the program when GPU Fusion launches it: through its own option (GPU placeholder in the arguments, 1.3) or the SDK | **Only with the program's support**: Windows cannot place programs on the Intel GPU here. Verified on Intel: Microsoft Edge and Brave (their own option), FFmpeg, and an SDK program. |
 | Discrete GPU | A | Windows preference `GpuPreference=2;` | Verified |
 | Both GPUs | D | no Windows value; both GPUs passed to the program (SDK) | Only with the program's support. The SDK probe was verified using both. |
 
@@ -36,6 +36,56 @@ its process tree as described below, and evaluates it against the mode. For Both
 counts, including work of unknown type on the Intel GPU, whose driver does not name engines. That is
 reported as "Both GPUs used" with the explicit note that it does not show a speed-up. See
 [SDK.md](SDK.md) for the variables and the verified results.
+
+## The program's own GPU option (1.3)
+
+Many programs have their own command-line option for choosing a GPU. A profile's launch arguments can
+contain **GPU placeholders**. GPU Fusion fills them in at every launch for the GPU of the profile's
+mode: Integrated means the integrated GPU, Discrete and Both mean the discrete GPU.
+
+| Placeholder | Example (Intel HD 2000 here) |
+|---|---|
+| `{luid}` | `00000000_0000870F` |
+| `{luid_pair}` | `0,34575` (decimal HighPart,LowPart: the form Chromium expects) |
+| `{luid_high}` / `{luid_low}` | `0` / `34575` |
+| `{dxgi_index}` | `1` |
+| `{vendor_id}` / `{vendor_hex}` | `32902` / `0x8086` |
+| `{gpu_name}` | `Intel(R) HD Graphics` |
+
+In Automatic mode, arguments containing a placeholder are left out, so the program decides by
+itself. The profile stores the placeholder, not the value, so it stays valid when Windows assigns
+new LUIDs at the next boot. A mode that Windows cannot enforce becomes **Expected** when the
+arguments carry such an option. It becomes **Verified for this program** once *Verify on this PC*
+confirms it. This only applies when the program is started from GPU Fusion.
+
+**Known options** are optional suggestions that fill in the option for a program GPU Fusion
+recognises by executable name. Each one states its evidence. You can add your own in
+`data\config\gpu-options.json`:
+
+```json
+[ { "executables": ["tool.exe"], "arguments": "--gpu {dxgi_index}", "note": "from the tool's manual" } ]
+```
+
+| Program | Option | Evidence on the reference PC (2026-10-26) |
+|---|---|---|
+| Microsoft Edge, Brave | `--use-adapter-luid={luid_pair}` | **Verified:** with the Intel LUID, WebGL rendered by ANGLE on Intel HD Graphics (renderer string `ANGLE (Intel, Intel(R) HD Graphics … D3D11)`), and GPU Fusion's verification confirmed work only on Intel. Without the switch, with the GT 730's LUID, or with an invalid LUID: GT 730. |
+| Chrome, Vivaldi, Opera, Chromium | same switch | not verified here (same Chromium code) |
+| FFmpeg | `-init_hw_device d3d11va=gf:{dxgi_index} -hwaccel d3d11va -hwaccel_device gf` | **Verified:** index 1 → decoding work on Intel; index 0 → GT 730 video engine; identical frame hashes |
+
+Caveat for browsers: a browser that is already running ignores the switch, because the new window
+joins the running instance. Close every window first, or give the profile its own `--user-data-dir`.
+
+Measured end to end through a profile (`--apply-profile msedge.exe --mode integrated
+--profile-known-option`, then `--verify-profile`): **"Confirmed: the program's GPU work ran on
+Intel(R) HD Graphics"**. Automatic mode: GT 730. No Windows value was written for Edge.
+
+### Verification fix found on the way
+
+Edge's sandboxed GPU process cannot be opened with `PROCESS_QUERY_INFORMATION`, so the D3DKMT
+per-process statistics for the Intel (WDDM 1.2) GPU missed its work, and the verdict said "no GPU
+activity". GPU Fusion now retries with `PROCESS_QUERY_LIMITED_INFORMATION`, which works, and then
+sees the work. Processes that still cannot be opened are named in the result, and "no activity" is
+qualified instead of claimed.
 
 ## Diagnosis: why "use the Intel GPU" did nothing
 
@@ -114,6 +164,8 @@ themselves (in their own settings) can use the Intel GPU, and GPU Fusion verifie
 
 - The program offers its own GPU/adapter setting (many games, editors, encoders do). Set it there,
   then use *Verify on this PC*.
+- The program has a command-line GPU option and is launched from its profile with a GPU placeholder
+  (verified with Microsoft Edge, Brave and FFmpeg; see above).
 - The program integrates the GPU Fusion SDK and is launched from its profile (verified with the probe).
 - For batch work: the program accepts an adapter option on its command line. The dispatcher's command
   template fills in `{dxgi_index}` / `{luid}` per job (verified with FFmpeg `-init_hw_device d3d11va=g:{dxgi_index}`).

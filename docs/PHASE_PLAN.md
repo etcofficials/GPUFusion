@@ -197,6 +197,29 @@
   by hashing every tracked file against git; restored from git, `git fsck` clean). `build.ps1` now
   refuses to build when a source changed on disk without being edited.
 
+## 1.2 — generic GPU manager (2026-10-25/26)
+
+- Profiles for any executable (discovery, persistent per-program JSON, versioned-folder resolution),
+  per-mode capability classes A–E, apply only justified Windows values, launch/verify per mode.
+- Optional header-only SDK (`GPUFUSION_MODE/ADAPTERS/PROFILE`), verified with the probe in every mode.
+- Generic job dispatcher (class C) with measured comparison against a concurrency control; decode
+  batch gains ≤ ~15 % and unstable, reported as such.
+
+## 1.3 — the program's own GPU option (2026-10-26)
+
+- **Finding:** Chromium's `--use-adapter-luid=<high>,<low>` puts Edge and Brave on the Intel HD 2000
+  (renderer string + verification), where Windows' preference cannot. FFmpeg's d3d11va device index
+  works too.
+- **Implemented:** GPU placeholders in profile launch arguments (filled in per launch for the mode's
+  GPU, left out in Automatic), known-option suggestions with evidence (built-in + user file), capability
+  "Expected" with such an option, CLI `--profile-known-option`.
+- **Verification blind spot fixed:** sandboxed processes on WDDM 1.x GPUs are now read with
+  `PROCESS_QUERY_LIMITED_INFORMATION`. Processes that still cannot be read are reported.
+- Live test: a real browser confirmed on the Intel GPU through its option.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.
+- Possible next steps:
+  - more known options, each verified before it is marked so;
+  - a per-profile `--user-data-dir` helper for browsers that are already running.

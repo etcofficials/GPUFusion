@@ -84,7 +84,20 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | No injection, patching, driver/BIOS/global changes | ✔ | only HKCU per-app values for chosen executables, after confirmation |
 | Existing features preserved | ✔ | GPU Preferences page, NVIDIA selection, detection, monitoring, benchmarks, Lab unchanged; their tests pass |
 
+## 1.3 — the program's own GPU option
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Real, unmodified programs on the GPU of the profile's mode where Windows cannot do it | ✔ (programs with a GPU option) | Edge and Brave on the Intel GPU via `--use-adapter-luid={luid_pair}` (renderer string + verification); FFmpeg via d3d11va index; `tst_profiles_live::realBrowserFollowsItsKnownOption` |
+| Generic: no per-application code; suggestions are data with evidence, user-extensible | ✔ | placeholders work for any program; `KnownOptions` table + `config\gpu-options.json`; `tst_profiles`, `tst_gpumanager_ui` |
+| Never claimed before verified | ✔ | status "Expected" until *Verify on this PC* confirms it for the program |
+| No Windows value written for the program's own option | ✔ | Edge registry value checked absent before and after |
+| Verification does not miss sandboxed processes on WDDM 1.x GPUs | ✔ | limited-rights retry; uninspected processes named; `tst_gpuselection` |
+| Arbitrary programs without a GPU option on the Intel GPU | ✘ (Windows limitation, unchanged) | documented |
+
 ## Tests at release
+
+1.3.0: 30 CTest entries, 218 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.2.0: 30 CTest entries (29 suites + registry restore fixture), 212 cases, all passing in the release
 build with reference-machine expectations (2026-10-26).

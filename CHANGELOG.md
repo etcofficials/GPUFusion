@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.3.0 — 2026-10-26
+
+Real programs on the GPU you choose, through their own GPU option. Verified with Microsoft Edge,
+Brave and FFmpeg on the Intel GPU, where Windows itself cannot place programs.
+
+- **GPU placeholders in profile launch arguments:** `{luid}`, `{luid_pair}`, `{luid_high}`,
+  `{luid_low}`, `{dxgi_index}`, `{vendor_id}`, `{vendor_hex}`, `{gpu_name}` are filled in at every
+  launch for the GPU of the profile's mode. In Automatic mode those arguments are left out. Profiles
+  keep the placeholder, so they survive new LUIDs after a restart. A mode Windows cannot enforce shows
+  as *Expected* with such an option, and as *Verified for this program* after verification.
+- **Known GPU options** (optional suggestions with their evidence, plus your own in
+  `config\gpu-options.json`):
+  - Chromium-based browsers: `--use-adapter-luid={luid_pair}`, verified with Edge and Brave.
+  - FFmpeg: d3d11va device index, verified.
+  
+  The GPU Manager shows the suggestion with a *Use this option* button. On the command line, use
+  `--profile-known-option` with `--apply-profile`.
+- **Verification fix:** work by sandboxed processes (e.g. a browser's GPU process) on pre-WDDM 2.0
+  GPUs was missed, because the process could not be opened with full query rights. It is now read
+  with limited rights. Processes that still cannot be inspected are named, and "no activity" is no
+  longer claimed in that case.
+- Dispatcher command templates accept `{luid_pair}`, `{luid_high}` and `{luid_low}`.
+
 ## 1.2.0 — 2026-10-25
 
 GPU Fusion becomes a generic GPU manager: a GPU profile for any program, the strongest justified

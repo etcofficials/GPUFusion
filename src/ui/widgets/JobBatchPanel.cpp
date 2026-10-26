@@ -80,7 +80,8 @@ JobBatchPanel::JobBatchPanel(AppContext& context, QWidget* parent) : Card(tr("Yo
 {
     body()->addWidget(muted(tr("Independent jobs — one per input file — spread over the GPUs: each GPU takes the next job as soon as it is "
                                "free. Any program can be used if it lets you choose its GPU on the command line; the placeholders "
-                               "{dxgi_index} {luid} {vendor_id} {vendor_hex} {gpu_name} {input} {output} {stem} {job} are filled in per job, "
+                               "{dxgi_index} {luid} {luid_pair} {vendor_id} {vendor_hex} {gpu_name} {input} {output} {stem} {job} are filled "
+                               "in per job, "
                                "and GPUFUSION_ADAPTERS is set for programs that use the GPU Fusion SDK. Example (FFmpeg decoding): "
                                "ffmpeg -y -init_hw_device d3d11va=g:{dxgi_index} -hwaccel d3d11va -hwaccel_device g -i {input} -f framemd5 {output}")));
     auto* form = new QFormLayout;

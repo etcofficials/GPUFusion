@@ -9,7 +9,12 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: version 1.2.0 — generic GPU manager.** The **GPU Manager** page keeps a GPU profile for
+> **Status: version 1.3.0.** New in 1.3: profiles can pass the chosen GPU to a program through its
+> **own GPU option**, using placeholders such as `{luid_pair}` and `{dxgi_index}` in the launch
+> arguments. There are known-option suggestions with their evidence. **Verified: Microsoft Edge, Brave
+> and FFmpeg run on the Intel GPU this way**, where Windows' own preference cannot move programs.
+>
+> Version 1.2 made it a generic GPU manager. The **GPU Manager** page keeps a GPU profile for
 > any program (picked from installed/running programs or browsed to): Automatic, Integrated GPU,
 > Discrete GPU or Both GPUs. For each mode it shows what that mode can do for this program on this PC,
 > applies the strongest mechanism that is justified, and verifies on the real GPUs which GPU(s) the
@@ -103,7 +108,7 @@ GPUFusion.exe [--data-dir <path>] [--page <id>] [--smoke-test[=<ms>]] [--screens
 | `--lab-size <preset>` | With `--run-lab`: hash workload size for the split experiment (default `standard`) |
 | `--verify-app <exe>` | Start the program (arguments after `--`), watch which GPU its processes render on, log the staged result, exit (0 = confirmed / observed) |
 | `--verify-seconds <n>` | With `--verify-app` / `--verify-profile`: how long to watch (default 20) |
-| `--apply-profile <exe> --mode <m>` | Create/update the GPU profile of any program (`automatic`, `integrated`, `discrete`, `both`; `--profile-args` for launch arguments), apply it, exit |
+| `--apply-profile <exe> --mode <m>` | Create/update the GPU profile of any program (`automatic`, `integrated`, `discrete`, `both`; `--profile-args` for launch arguments, which may contain GPU placeholders such as `{luid_pair}` / `{dxgi_index}`; `--profile-known-option` adds the program's known GPU option), apply it, exit |
 | `--launch-profile <exe\|id>` | Start the program from its profile (arguments + GPU choice for SDK programs) |
 | `--verify-profile <exe\|id>` | Start it from its profile, verify which GPU(s) it used, store the result (0 = mode confirmed) |
 | `--dispatch <template\|decode>` | Run one job per input over the GPUs; `--dispatch-inputs <folder\|a;b>`, `--dispatch-output`, `--dispatch-pattern {stem}.ext`, `--dispatch-gpus all\|integrated\|discrete\|0,1`, `--dispatch-compare <n>` (measured comparison) |
@@ -153,8 +158,9 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
 - On the reference PC Windows cannot move programs to the Intel GPU: it ranks the GT 730 (boot device,
   drives the only display; the Intel driver is WDDM 1.2) first for every preference. Verified with real
   rendering — a program set to "Power saving" still renders on the GT 730. GPU Fusion therefore marks
-  the Intel mode "only with the program's support": programs with their own GPU setting, SDK programs
-  launched from their profile, and dispatcher jobs with an adapter option can use it.
+  the Intel mode "only with the program's support". Programs with their own GPU option can use it when
+  launched from their profile (verified: Edge, Brave, FFmpeg), as can SDK programs and dispatcher jobs.
+  A browser that is already running ignores the option.
 - No setting can make an existing program use both GPUs; "Both GPUs" works only for programs that
   divide their own work (SDK). Both GPUs showing activity does not mean the program got faster.
 - The job dispatcher measured at most about 10–15 % gain for decode batches here (not stable between

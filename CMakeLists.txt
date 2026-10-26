@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(GPUFusion
-    VERSION 1.2.0
+    VERSION 1.3.0
     DESCRIPTION "Windows GPU monitor, GPU preference manager and multi-GPU workload lab"
     LANGUAGES CXX RC)
 

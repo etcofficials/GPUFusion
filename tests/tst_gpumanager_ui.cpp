@@ -15,6 +15,7 @@
 #include "ProbePreferenceGuard.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QJsonDocument>
 #include <QLineEdit>
 #include <QListWidget>
@@ -147,6 +148,61 @@ private Q_SLOTS:
         page.applySelected(true);
         QTRY_VERIFY(!pref::findValueName(m_store, probeguard::probePath()).has_value());
         QCOMPARE(store.find(probeguard::probePath())->mode, profiles::GpuMode::Automatic);
+    }
+
+    // A program's own GPU option through the page: a user-defined known option for the probe
+    // ("--adapter {luid}"), inserted with the button, SDK sharing switched off — the probe must land on
+    // the integrated GPU purely through its launch arguments, with no Windows value written.
+    void knownOptionThroughThePage()
+    {
+        QTemporaryDir dir;
+        DataLocation data = resolveDataLocation(dir.path(), dir.filePath(QStringLiteral("data")), dir.filePath(QStringLiteral("fb")));
+        QVERIFY(ensureDataLayout(data).isEmpty());
+        QFile options(QDir(data.configDir()).filePath(QStringLiteral("gpu-options.json")));
+        QVERIFY(options.open(QIODevice::WriteOnly));
+        options.write(R"([{"executables":["GPUFusionProbe.exe"],"arguments":"--adapter {luid}","program":"GPU Fusion probe","note":"test entry"}])");
+        options.close();
+
+        hw::HardwareService hardware;
+        QSignalSpy detected(&hardware, &hw::HardwareService::detectionFinished);
+        hardware.refresh(true);
+        QVERIFY(detected.wait(20000));
+        bool integrated = false;
+        for (const hw::Adapter& a : hardware.latest()->adapters)
+            integrated |= a.dxgi && !a.isSoftware() && a.classification.value == hw::AdapterClass::Integrated;
+        if (!integrated)
+            QSKIP("Needs an integrated GPU");
+
+        SettingsStore settingsStore(data.settingsFile());
+        auto loaded = settingsStore.load();
+        mon::MonitorService monitor(hardware, loaded.settings);
+        pref::PreferenceService prefs(data.configDir(), data.reportsDir(), probeguard::probePath());
+        profiles::ProfileStore store(QDir(data.configDir()).filePath(QStringLiteral("profiles")));
+        ui::AppContext context(data, &settingsStore, loaded, &hardware, &monitor, &prefs, nullptr, nullptr, &store);
+        ui::GpuManagerPage page(context);
+        page.resize(1000, 1000);
+        page.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&page));
+
+        QVERIFY(page.addProgram(probeguard::probePath(), QStringLiteral("Probe")));
+        QVERIFY(page.knownOptionText().contains(QStringLiteral("--adapter {luid}")));
+        page.setArguments(QStringLiteral("--render 6"));
+        page.useKnownOption();
+        QCOMPARE(page.findChild<QLineEdit*>()->text(), QStringLiteral("--adapter {luid} --render 6"));
+        page.findChild<QCheckBox*>()->setChecked(false); // no SDK variables: the option alone must do it
+        page.selectMode(profiles::GpuMode::Integrated);
+        QVERIFY2(page.capabilityText().contains(QStringLiteral("own GPU option")), qPrintable(page.capabilityText()));
+        page.applySelected(false);
+        QVERIFY(!pref::findValueName(m_store, probeguard::probePath()).has_value());
+        QCOMPARE(store.find(probeguard::probePath())->arguments, QStringLiteral("--adapter {luid} --render 6")); // placeholder kept
+        QVERIFY(!store.find(probeguard::probePath())->shareGpuChoiceWithApp);
+
+        QSignalSpy finished(&page, &ui::GpuManagerPage::verificationFinished);
+        page.verifySelected(8, false);
+        QVERIFY(finished.wait(60000));
+        qInfo().noquote() << page.resultText();
+        const auto saved = store.find(probeguard::probePath());
+        QVERIFY2(saved->lastVerification && saved->lastVerification->confirmed, qPrintable(page.resultText()));
     }
 
     void cleanupTestCase()
