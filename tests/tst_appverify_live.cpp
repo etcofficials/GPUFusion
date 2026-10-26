@@ -153,7 +153,7 @@ private Q_SLOTS:
         QVERIFY(apis.d3d11 && !apis.d3d12);
         const auto app = pref::win::readImports(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("GPUFusion.exe")), &error);
         QVERIFY2(app, qPrintable(error));
-        QVERIFY(app->contains(QStringLiteral("qt6core.dll")));
+        QVERIFY(app->contains(QStringLiteral("qt6core.dll")) || app->contains(QStringLiteral("qt6cored.dll"))); // release / debug build
         QVERIFY(!pref::win::readImports(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("GPUFusion.datadir")), &error));
         QVERIFY(!pref::win::readImports(QStringLiteral("Z:\\no\\such\\program.exe"), &error));
     }

@@ -127,9 +127,11 @@ private Q_SLOTS:
         QCOMPARE(parseGpuPreference(QStringLiteral("GpuPreference=0;")), GpuPreference::LetWindowsDecide);
         QCOMPARE(parseGpuPreference(QStringLiteral("SwapEffectUpgradeEnable=1;GpuPreference=2;")), GpuPreference::HighPerformance);
         QCOMPARE(parseGpuPreference(QStringLiteral("GpuPreference=1;SwapEffectUpgradeEnable=1;")), GpuPreference::PowerSaving);
-        QCOMPARE(parseGpuPreference(QStringLiteral("SwapEffectUpgradeEnable=1;")), GpuPreference::Unrecognised);
+        // Other keys only (Windows' own windowed-game optimisation): no GPU preference is set.
+        QCOMPARE(parseGpuPreference(QStringLiteral("SwapEffectUpgradeEnable=1;")), GpuPreference::NotSet);
         QCOMPARE(parseGpuPreference(QStringLiteral("GpuPreference=7;")), GpuPreference::Unrecognised);
-        QCOMPARE(parseGpuPreference(QStringLiteral("XGpuPreference=2;")), GpuPreference::Unrecognised);
+        QCOMPARE(parseGpuPreference(QStringLiteral("GpuPreference=abc;")), GpuPreference::Unrecognised);
+        QCOMPARE(parseGpuPreference(QStringLiteral("XGpuPreference=2;")), GpuPreference::NotSet); // a different key
         QCOMPARE(parseGpuPreference(QString()), GpuPreference::NotSet);
     }
 };

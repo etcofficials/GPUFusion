@@ -18,9 +18,12 @@ GpuPreference parseGpuPreference(const QString& data)
 {
     static const QRegularExpression re(QStringLiteral(R"((?:^|;)\s*GpuPreference\s*=\s*(\d+)\s*(?:;|$))"),
                                        QRegularExpression::CaseInsensitiveOption);
+    // Other keys only (e.g. Windows' own "SwapEffectUpgradeEnable=1;") means no GPU preference is set;
+    // a GpuPreference key that cannot be read is unrecognised.
+    static const QRegularExpression key(QStringLiteral(R"((?:^|;)\s*GpuPreference\s*=)"), QRegularExpression::CaseInsensitiveOption);
     const auto m = re.match(data);
     if (!m.hasMatch())
-        return data.trimmed().isEmpty() ? GpuPreference::NotSet : GpuPreference::Unrecognised;
+        return key.match(data).hasMatch() ? GpuPreference::Unrecognised : GpuPreference::NotSet;
     switch (m.captured(1).toInt()) {
     case 0:  return GpuPreference::LetWindowsDecide;
     case 1:  return GpuPreference::PowerSaving;

@@ -26,13 +26,14 @@ $repo = Split-Path -Parent $PSScriptRoot
 # Errors that mean "an intermediate file is unreadable/corrupt", not "the code is wrong".
 # (C1004 "unexpected end-of-file" counts only when the named file is a generated one inside the build
 # directory, e.g. a truncated shader header; files outside the build directory are never deleted.)
-$corruptionPattern = 'LNK1104|LNK1136|LNK1201|LNK1285|C2471|C1090|C1004|cmake_ninja_dyndep failed to parse|invalid or corrupt file'
+# (C1051 "program database ... has an obsolete format": a stale/damaged .pdb in the build tree.)
+$corruptionPattern = 'LNK1104|LNK1136|LNK1201|LNK1285|C2471|C1090|C1051|C1004|cmake_ninja_dyndep failed to parse|invalid or corrupt file'
 
 function Remove-DamagedOutputs([string[]]$lines, [string]$buildDir) {
     $removed = @()
     foreach ($line in $lines) {
         if ($line -notmatch $corruptionPattern) { continue }
-        foreach ($m in [regex]::Matches($line, "([A-Za-z]:\\[^'`"\s]+|[\w\\/.\-]+)\.(obj|ddi|pdb|lib|modmap|h)\b")) {
+        foreach ($m in [regex]::Matches($line, "([A-Za-z]:\\[^'`"\s()]+|[\w\\/.\-]+)\.(obj|ddi|pdb|lib|modmap|h|moc|cpp)\b")) {
             $p = $m.Value
             if (-not [IO.Path]::IsPathRooted($p)) { $p = Join-Path $buildDir $p }
             $full = [IO.Path]::GetFullPath($p)

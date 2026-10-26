@@ -208,6 +208,25 @@ private Q_SLOTS:
         QCOMPARE(store.list().size(), 1);
     }
 
+    // A damaged profile file (e.g. a failing disk) is skipped, left untouched, and does not hide the others.
+    void damagedProfileFilesAreSkippedNotLost()
+    {
+        ProfileStore store(m_dir.filePath(QStringLiteral("profiles-damaged")));
+        AppProfile good = newProfile(m_dir.filePath(QStringLiteral("d/good.exe")));
+        QString error;
+        QVERIFY(store.save(good, &error));
+        const QString bad = QDir(store.directory()).filePath(QStringLiteral("broken-000000000000.json"));
+        QFile f(bad);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("{\"schemaVersion\":1,\"exePath\":\"C:\\\\x.e");   // truncated
+        f.close();
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("GPU profile ignored")));
+        const QList<AppProfile> all = store.list();
+        QCOMPARE(all.size(), 1);
+        QCOMPARE(all[0].id, good.id);
+        QVERIFY(QFile::exists(bad));                                     // left for the user to inspect
+    }
+
     void versionFoldersResolveToTheNewestCopy()
     {
         const QString root = m_dir.filePath(QStringLiteral("Discordish"));

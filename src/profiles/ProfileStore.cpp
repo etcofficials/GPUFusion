@@ -1,5 +1,7 @@
 #include "profiles/ProfileStore.h"
 
+#include "core/Logging.h"
+
 #include <QCollator>
 #include <QDir>
 #include <QFile>
@@ -25,10 +27,17 @@ QList<AppProfile> ProfileStore::list() const
     QList<AppProfile> out;
     for (const QFileInfo& fi : QDir(m_dir).entryInfoList({ QStringLiteral("*.json") }, QDir::Files)) {
         QFile f(fi.absoluteFilePath());
-        if (!f.open(QIODevice::ReadOnly))
+        if (!f.open(QIODevice::ReadOnly)) {
+            qCWarning(lcPrefs).noquote() << "GPU profile not readable:" << QDir::toNativeSeparators(fi.absoluteFilePath()) << f.errorString();
             continue;
-        if (auto p = AppProfile::fromJson(QJsonDocument::fromJson(f.readAll()).object()))
+        }
+        QJsonParseError err{};
+        const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+        if (auto p = AppProfile::fromJson(doc.object()))
             out << *p;
+        else // damaged (e.g. by a failing disk) or from a newer GPU Fusion: left in place, not overwritten
+            qCWarning(lcPrefs).noquote() << "GPU profile ignored (invalid or newer format):" << QDir::toNativeSeparators(fi.absoluteFilePath())
+                                         << (err.error != QJsonParseError::NoError ? err.errorString() : QString());
     }
     QCollator collator;
     collator.setCaseSensitivity(Qt::CaseInsensitive);
