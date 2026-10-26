@@ -7,11 +7,11 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QMutex>
 #include <QFileInfo>
 #include <QProcess>
 #include <QProcessEnvironment>
 
-#include <mutex>
 #include <thread>
 
 namespace gf::dispatch {
@@ -129,7 +129,7 @@ RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QLi
     int next = 0;            // guarded by `mutex`
     int done = 0;
     QMap<int, QPair<double, int>> measured; // worker -> (total ms, jobs) in this run
-    std::mutex mutex;
+    QMutex mutex; // not std::mutex: its constexpr constructor (VS 17.10+) crashes with an older msvcp140.dll on PATH
     auto msPerJob = [&](int w) -> double { // caller holds `mutex`
         const auto m = measured.value(w);
         return m.second > 0 ? m.first / m.second : expectedJobMs.value(w, 0);
@@ -144,7 +144,7 @@ RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QLi
                     return;
                 int j = -1;
                 {
-                    std::lock_guard lock(mutex);
+                    QMutexLocker lock(&mutex);
                     if (next >= jobs.size())
                         return;
                     double fastestOther = 0;
@@ -163,7 +163,7 @@ RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QLi
                 const double elapsed = double(t.nsecsElapsed()) / 1e6;
                 if (r.ms <= 0)
                     r.ms = elapsed;
-                std::lock_guard lock(mutex);
+                QMutexLocker lock(&mutex);
                 run.jobs[j] = r;
                 if (r.ok) {
                     measured[w].first += elapsed;
