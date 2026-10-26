@@ -287,6 +287,11 @@
   column (14.1 → 4.4 ms per refresh with a per-process cache). Clean debug build passes.
   [FINAL_REPORT.md](FINAL_REPORT.md) written.
 
+## 1.13 — automatic profile backup, release 1.11.0 (2026-10-26)
+
+- Optional backup folder (Settings): an export after every profile change, deduplicated, rotated,
+  batched for imports, with a warning when the folder is on the same (failing) drive. Off by default.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

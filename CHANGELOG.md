@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.11.0 — 2026-10-26
+
+- **Automatic profile backup.** In Settings → *GPU profiles*, choose a folder, ideally on another
+  drive.
+  - After every profile change, GPU Fusion saves all profiles there (the same file format as
+    *Export…*) and keeps the newest copies (10 by default).
+  - A backup is skipped when nothing changed, and an import makes one backup, not one per profile.
+  - The page warns when the folder is on the same drive as GPU Fusion's data, because such a backup
+    would not survive that drive failing.
+  - It is off by default: nothing is written anywhere until you choose a folder. Saving the setting
+    makes a first backup straight away. Restore with *Import…*.
+- Settings file schema 3. Older settings files load unchanged, with the backup off.
+
 ## 1.10.1 — 2026-10-26
 
 Final hardening.

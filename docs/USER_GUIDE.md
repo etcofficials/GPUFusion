@@ -98,6 +98,10 @@ Existing profiles are kept unless you choose to replace them. Importing changes 
 apply a profile to put it into effect. Verification results are not imported, because they describe
 the PC they were made on.
 
+For automatic backups, set a folder in **Settings → GPU profiles**, preferably on another drive.
+GPU Fusion then saves the profiles there after every change and keeps the newest copies. To restore,
+use **Import…** with the newest `gpufusion-profiles-….json` file.
+
 ## 7. Run a batch of jobs on both GPUs
 
 **Workload Lab → Your own jobs on several GPUs** runs one job per input file, spread over the GPUs.

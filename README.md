@@ -9,7 +9,7 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-**Version 1.10.1.** Every version's changes are in [CHANGELOG.md](CHANGELOG.md). For step-by-step use,
+**Version 1.11.0.** Every version's changes are in [CHANGELOG.md](CHANGELOG.md). For step-by-step use,
 see the **[User guide](docs/USER_GUIDE.md)**.
 
 ## What it does
@@ -19,7 +19,7 @@ see the **[User guide](docs/USER_GUIDE.md)**.
 | **Dashboard** | Live load, memory and sensors of every physical GPU, including WDDM 1.x GPUs that Task Manager cannot show. |
 | **GPUs** | Every adapter Windows exposes, its driver, and its tested Direct3D capabilities. |
 | **Applications** | Which process uses which GPU, live. For programs with a GPU profile: whether they are on the GPU the profile asks for (✓/✗). Nothing is launched for this. |
-| **GPU Manager** | A GPU profile for **any program**: Automatic, Integrated, Discrete or Both GPUs. For each mode it shows what that mode can do for this program on this PC, and applies the strongest mechanism that is justified: Windows' per-app preference where it is shown to work, and otherwise the program's own GPU option (placeholders such as `{luid_pair}`, `{dxgi_index}`) or the [SDK](docs/SDK.md). It can launch the program and **verify which GPU it really used**, offer to close a running instance first, create **shortcuts** that start the program through its profile, hold **variants** (several profiles for one program), and **export/import** profiles. |
+| **GPU Manager** | A GPU profile for **any program**: Automatic, Integrated, Discrete or Both GPUs. For each mode it shows what that mode can do for this program on this PC, and applies the strongest mechanism that is justified: Windows' per-app preference where it is shown to work, and otherwise the program's own GPU option (placeholders such as `{luid_pair}`, `{dxgi_index}`) or the [SDK](docs/SDK.md). It can launch the program and **verify which GPU it really used**, offer to close a running instance first, create **shortcuts** that start the program through its profile, hold **variants** (several profiles for one program), **export/import** profiles, and back them up automatically to a folder you choose. |
 | **GPU Preferences** | Windows' own per-app preference, what it does on this PC (measured with a probe), journalled changes with undo. |
 | **Workload Lab** | Measured experiments with both GPUs at once, plus a **job runner** for batches of independent jobs (any command line, or built-in decoding) that says whether both GPUs beat the best single one. |
 | **Benchmarks** | Repeatable, output-checked measurements, compared only with equivalent earlier runs. |

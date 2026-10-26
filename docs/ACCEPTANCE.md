@@ -150,7 +150,16 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Everything usable with the keyboard | ✔ (controls reachable with Tab; benchmark selection with Space) | `tst_accessibility` |
 | Tested with an actual screen reader | ✘ (not done) | names are checked through Qt's accessibility interface, which screen readers use; no screen reader is installed on the reference PC |
 
+## 1.11 — automatic profile backup
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Profiles survive the loss of the data drive | ✔ (when a backup folder on another drive is set) | automatic backup after every change; `tst_profiles::automaticBackup`; same-drive warning |
+| Nothing written without the user's choice | ✔ | off by default; only the chosen folder; other files there never touched |
+
 ## Tests at release
+
+1.11.0: 34 CTest entries, 237 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.10.1: 34 CTest entries, 235 cases, all passing (release, reference-machine expectations); full suite
 and page start/close tests also pass in the debug build (2026-10-26). See [FINAL_REPORT.md](FINAL_REPORT.md).

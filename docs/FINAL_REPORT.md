@@ -1,6 +1,6 @@
 # GPU Fusion — final report
 
-State at version 1.10.x (2026-10-26), on the reference PC: Windows 10 Pro 22H2, Intel Core i5-2400S,
+State at version 1.11 (2026-10-26), on the reference PC: Windows 10 Pro 22H2, Intel Core i5-2400S,
 NVIDIA GeForce GT 730 (Fermi GF108, driver 391.35, WDDM 2.3), Intel HD Graphics 2000 (driver
 9.17.10.4459, WDDM 1.2). This report separates what was **verified on that hardware** from what is
 **inferred or hypothetical**, and lists what was **not done**. Details and measurements are in the
@@ -93,5 +93,6 @@ linked documents.
 - **The development disk (G:) is failing:** SMART reports hundreds of uncorrectable reads, pending
   and offline-uncorrectable sectors, and over a thousand SATA CRC errors; NTFS has logged corruption. It silently replaced source files once and truncated build outputs several times.
   Safeguards are in place (`scripts/build.ps1`, git as the source of truth, everything on GitHub).
-  The drive should still be replaced, and GPU Fusion profiles exported to another disk.
+  The drive should still be replaced. Since 1.11, GPU Fusion can back its profiles up automatically
+  to a folder on another drive (Settings → GPU profiles).
   ([TROUBLESHOOTING.md](TROUBLESHOOTING.md))
