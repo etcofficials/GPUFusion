@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QProcess>
 
 namespace gf::profiles {
 
@@ -193,10 +194,22 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
         c.summary = plan.summary;
         break;
     case Enforcement::NotEnforceable:
+        if (usesGpuPlaceholders(profile.arguments)) {
+            c.status = ModeStatus::Expected;
+            c.mechanism = QStringLiteral("The program's own GPU option in its launch arguments, filled in for %1 when GPU Fusion starts it")
+                              .arg(target);
+            c.summary = QStringLiteral("Windows cannot place programs on %1 here, but this profile passes the GPU to the program through its "
+                                       "own option. Use \"Verify on this PC\" to confirm that the program honours it.").arg(target);
+            c.reasons << QStringLiteral("Applies only when the program is started from GPU Fusion (Launch / Verify / --launch-profile); "
+                                        "started any other way, it uses its default GPU.");
+            break;
+        }
         c.status = ModeStatus::NeedsAppSupport;
         c.mechanism = QStringLiteral("Launch through GPU Fusion with the GPU passed to the program (GPUFUSION_ADAPTERS)");
         c.summary = QStringLiteral("Windows cannot place programs on %1 here. %2").arg(target, QLatin1StringView(kSdkHint));
-        c.reasons << QStringLiteral("Hypothesis (needs your decision, untested): driving the display from %1 and making it the primary "
+        c.reasons << QStringLiteral("If the program has its own GPU option, put it in the launch arguments with a GPU placeholder "
+                                    "(e.g. {luid_pair}, {dxgi_index}); GPU Fusion fills it in for %1.").arg(target)
+                  << QStringLiteral("Hypothesis (needs your decision, untested): driving the display from %1 and making it the primary "
                                     "display adapter would make it the default for programs that do not choose a GPU.").arg(target);
         break;
     case Enforcement::NotApplicable:
@@ -242,6 +255,65 @@ QStringList requestedAdapterLuids(GpuMode mode, const QList<pref::SelectableGpu>
         if (discrete) out << discrete->luid;
         if (integrated) out << integrated->luid;
         break;
+    }
+    return out;
+}
+
+// ---- GPU placeholders ------------------------------------------------------------------------------
+
+QStringList gpuPlaceholders()
+{
+    return { QStringLiteral("{luid}"), QStringLiteral("{luid_pair}"), QStringLiteral("{luid_high}"), QStringLiteral("{luid_low}"),
+             QStringLiteral("{dxgi_index}"), QStringLiteral("{vendor_id}"), QStringLiteral("{vendor_hex}"), QStringLiteral("{gpu_name}") };
+}
+
+bool usesGpuPlaceholders(const QString& arguments)
+{
+    for (const QString& p : gpuPlaceholders())
+        if (arguments.contains(p))
+            return true;
+    return false;
+}
+
+std::optional<pref::SelectableGpu> modeGpu(GpuMode mode, const QList<pref::SelectableGpu>& gpus)
+{
+    switch (mode) {
+    case GpuMode::Automatic:  return std::nullopt;
+    case GpuMode::Integrated: return pref::gpuFor(GpuChoice::Integrated, gpus);
+    case GpuMode::Discrete:
+    case GpuMode::Both:       return pref::gpuFor(GpuChoice::Discrete, gpus);
+    }
+    return std::nullopt;
+}
+
+QString expandGpuPlaceholders(const QString& text, const pref::SelectableGpu& gpu)
+{
+    // LUID text "HHHHHHHH_LLLLLLLL": HighPart is a signed LONG, LowPart an unsigned DWORD.
+    const QStringList parts = gpu.luid.split(u'_');
+    const qint32 high = parts.size() == 2 ? qint32(parts[0].toUInt(nullptr, 16)) : 0;
+    const quint32 low = parts.size() == 2 ? parts[1].toUInt(nullptr, 16) : 0;
+    QString s = text;
+    s.replace(QLatin1StringView("{luid_pair}"), QStringLiteral("%1,%2").arg(high).arg(low))
+        .replace(QLatin1StringView("{luid_high}"), QString::number(high))
+        .replace(QLatin1StringView("{luid_low}"), QString::number(low))
+        .replace(QLatin1StringView("{luid}"), gpu.luid)
+        .replace(QLatin1StringView("{dxgi_index}"), QString::number(gpu.dxgiIndex))
+        .replace(QLatin1StringView("{vendor_id}"), QString::number(gpu.vendorId))
+        .replace(QLatin1StringView("{vendor_hex}"), QStringLiteral("0x%1").arg(gpu.vendorId, 4, 16, QLatin1Char('0')))
+        .replace(QLatin1StringView("{gpu_name}"), gpu.name);
+    return s;
+}
+
+QStringList launchArguments(const QString& arguments, GpuMode mode, const QList<pref::SelectableGpu>& gpus)
+{
+    const auto gpu = modeGpu(mode, gpus);
+    QStringList out;
+    for (const QString& a : QProcess::splitCommand(arguments)) {
+        if (!usesGpuPlaceholders(a))
+            out << a;
+        else if (gpu)
+            out << expandGpuPlaceholders(a, *gpu);
+        // else: left out, so the program chooses its GPU itself
     }
     return out;
 }

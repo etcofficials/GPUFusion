@@ -21,6 +21,7 @@ struct SelectableGpu {
     quint32 vendorId = 0;
     QString luid;             // "HHHHHHHH_LLLLLLLL", as reported by the probe
     bool integrated = false;  // detection's classification
+    int dxgiIndex = -1;       // DXGI enumeration index (what many programs' adapter options take)
 };
 
 enum class GpuChoice { Automatic, Integrated, Discrete, Both };

@@ -57,7 +57,8 @@ private:
     void showLastVerification(const profiles::AppProfile& p);
     std::optional<profiles::AppProfile> selected() const;
     profiles::GpuMode chosenMode() const;
-    profiles::CapabilityInputs inputsFor(const profiles::AppProfile& p) const;
+    profiles::CapabilityInputs inputsFor(const profiles::AppProfile& p);
+    void refreshKnownOption(const profiles::AppProfile& p);
     bool saveProfile(profiles::AppProfile& p);
     void setBusy(bool busy);
 
@@ -69,6 +70,8 @@ private:
     QRadioButton* m_modeButtons[4];
     QLabel* m_capability;
     QLineEdit* m_arguments;
+    QLabel* m_knownOption;
+    QPushButton* m_useKnownOption;
     QCheckBox* m_shareChoice;
     QPushButton* m_apply;
     QPushButton* m_launch;
@@ -78,6 +81,14 @@ private:
     QPointer<QThread> m_thread;
     std::atomic<bool> m_cancel{ false };
     bool m_loading = false;   // filling the editor from a profile: no change handlers
+    QString m_inputsExe;      // capability inputs cached per executable (imports are read from disk)
+    std::optional<profiles::CapabilityInputs> m_inputs;
+
+public:
+    // For tests: the known-option suggestion shown for the selected program ("" if none).
+    QString knownOptionText() const;
+    void useKnownOption();
+    void setArguments(const QString& arguments);
 };
 
 } // namespace gf::ui

@@ -4,6 +4,7 @@
 #include "preferences/PreferenceModel.h"
 #include "profiles/AppDiscovery.h"
 #include "profiles/AppProfile.h"
+#include "profiles/KnownOptions.h"
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
 
@@ -53,8 +54,8 @@ public:
     }
 };
 
-const SelectableGpu kNvidia{ QStringLiteral("NVIDIA GeForce GT 730"), 0x10DE, QStringLiteral("00000000_00007DEC"), false };
-const SelectableGpu kIntel{ QStringLiteral("Intel(R) HD Graphics"), 0x8086, QStringLiteral("00000000_0000870A"), true };
+const SelectableGpu kNvidia{ QStringLiteral("NVIDIA GeForce GT 730"), 0x10DE, QStringLiteral("00000000_00007DEC"), false, 0 };
+const SelectableGpu kIntel{ QStringLiteral("Intel(R) HD Graphics"), 0x8086, QStringLiteral("00000000_0000870A"), true, 1 };
 const QList<SelectableGpu> kGpus{ kNvidia, kIntel };
 constexpr quint64 kNvLuid = 0x7DEC, kIntelLuid = 0x870A;
 
@@ -294,7 +295,76 @@ private Q_SLOTS:
         QVERIFY(launchEnvironment(p, kGpus).isEmpty());
 
         p.arguments = QStringLiteral("--render 7 \"C:\\My Files\\in.mp4\"");
-        QCOMPARE(profileArguments(p), (QStringList{ QStringLiteral("--render"), QStringLiteral("7"), QStringLiteral("C:\\My Files\\in.mp4") }));
+        QCOMPARE(profileArguments(p, kGpus), (QStringList{ QStringLiteral("--render"), QStringLiteral("7"), QStringLiteral("C:\\My Files\\in.mp4") }));
+    }
+
+    // ---- GPU placeholders + known options -----------------------------------------------------------
+    void gpuPlaceholdersAreFilledInForTheMode()
+    {
+        QCOMPARE(expandGpuPlaceholders(QStringLiteral("{luid}|{luid_pair}|{luid_high}|{luid_low}|{dxgi_index}|{vendor_id}|{vendor_hex}|{gpu_name}"), kIntel),
+                 QStringLiteral("00000000_0000870A|0,34570|0|34570|1|32902|0x8086|Intel(R) HD Graphics"));
+        SelectableGpu negativeHigh = kNvidia; // HighPart is signed
+        negativeHigh.luid = QStringLiteral("FFFFFFFF_00000001");
+        QCOMPARE(expandGpuPlaceholders(QStringLiteral("{luid_pair}"), negativeHigh), QStringLiteral("-1,1"));
+
+        const QString args = QStringLiteral("--use-adapter-luid={luid_pair} --gpu \"{gpu_name}\" page.html");
+        QVERIFY(usesGpuPlaceholders(args));
+        QVERIFY(!usesGpuPlaceholders(QStringLiteral("--render 7 {input}")));
+        QCOMPARE(launchArguments(args, GpuMode::Integrated, kGpus),
+                 (QStringList{ QStringLiteral("--use-adapter-luid=0,34570"), QStringLiteral("--gpu"), QStringLiteral("Intel(R) HD Graphics"),
+                               QStringLiteral("page.html") }));
+        QCOMPARE(launchArguments(args, GpuMode::Discrete, kGpus).first(), QStringLiteral("--use-adapter-luid=0,32236"));
+        QCOMPARE(launchArguments(args, GpuMode::Both, kGpus).first(), QStringLiteral("--use-adapter-luid=0,32236"));
+        // Automatic, or no GPU for the mode: arguments with a placeholder are left out, the rest kept.
+        QCOMPARE(launchArguments(args, GpuMode::Automatic, kGpus), (QStringList{ QStringLiteral("--gpu"), QStringLiteral("page.html") }));
+        QCOMPARE(launchArguments(args, GpuMode::Integrated, { kNvidia }), (QStringList{ QStringLiteral("--gpu"), QStringLiteral("page.html") }));
+    }
+
+    void placeholderArgumentsMakeAnUnenforceableModeExpected()
+    {
+        AppProfile p = newProfile(QStringLiteral("C:\\Browser\\msedge.exe"));
+        const CapabilityInputs in = referenceInputs();
+        QCOMPARE(assessMode(p, GpuMode::Integrated, in).status, ModeStatus::NeedsAppSupport);
+        QVERIFY(assessMode(p, GpuMode::Integrated, in).reasons.join(u' ').contains(QStringLiteral("{luid_pair}"))); // the hint
+        p.arguments = QStringLiteral("--use-adapter-luid={luid_pair}");
+        const ModeCapability c = assessMode(p, GpuMode::Integrated, in);
+        QCOMPARE(c.status, ModeStatus::Expected);       // not "Verified" until this program was observed
+        QVERIFY(!c.write.has_value());                  // still no Windows value
+        QVERIFY(c.mechanism.contains(QStringLiteral("own GPU option")));
+        QCOMPARE(assessMode(p, GpuMode::Discrete, in).status, ModeStatus::Verified); // unaffected
+    }
+
+    void knownOptionsAreSuggestionsWithEvidence()
+    {
+        const QList<KnownGpuOption> builtIn = builtInKnownOptions();
+        for (const KnownGpuOption& k : builtIn) {
+            QVERIFY(!k.evidence.isEmpty());
+            QVERIFY(usesGpuPlaceholders(k.arguments)); // every suggestion depends on the chosen GPU
+        }
+        const auto edge = knownOptionFor(QStringLiteral("C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\MSEDGE.EXE"), builtIn);
+        QVERIFY(edge.has_value());
+        QCOMPARE(edge->arguments, QStringLiteral("--use-adapter-luid={luid_pair}"));
+        QVERIFY(edge->evidence.startsWith(QStringLiteral("Verified")));
+        QVERIFY(knownOptionFor(QStringLiteral("C:\\x\\chrome.exe"), builtIn)->evidence.contains(QStringLiteral("not verified")));
+        QVERIFY(!knownOptionFor(QStringLiteral("C:\\Games\\game.exe"), builtIn).has_value());
+
+        QCOMPARE(withKnownOption(QStringLiteral("page.html"), *edge), QStringLiteral("--use-adapter-luid={luid_pair} page.html"));
+        QCOMPARE(withKnownOption(QStringLiteral("--use-adapter-luid={luid_pair} page.html"), *edge),
+                 QStringLiteral("--use-adapter-luid={luid_pair} page.html")); // not twice
+        QCOMPARE(withKnownOption(QString(), *edge), edge->arguments);
+
+        // User entries come first and override; invalid ones are reported, not used.
+        const QString file = m_dir.filePath(QStringLiteral("gpu-options.json"));
+        QFile f(file);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"([{"executables":["msedge.exe"],"arguments":"--my-edge {dxgi_index}"},{"executables":[],"arguments":"x"},{"arguments":"y"}])");
+        f.close();
+        QStringList problems;
+        const QList<KnownGpuOption> all = loadKnownOptions(file, &problems);
+        QCOMPARE(problems.size(), 2);
+        QCOMPARE(knownOptionFor(QStringLiteral("msedge.exe"), all)->arguments, QStringLiteral("--my-edge {dxgi_index}"));
+        QVERIFY(knownOptionFor(QStringLiteral("msedge.exe"), all)->userDefined);
+        QCOMPARE(loadKnownOptions(m_dir.filePath(QStringLiteral("missing.json"))).size(), builtIn.size());
     }
 
     // ---- per-mode verdict -------------------------------------------------------------------------

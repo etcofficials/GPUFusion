@@ -6,6 +6,7 @@
 #include "preferences/PreferenceModel.h"
 #include "preferences/PreferenceService.h"
 #include "profiles/AppDiscovery.h"
+#include "profiles/KnownOptions.h"
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
 #include "ui/AppContext.h"
@@ -148,8 +149,19 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
     argsRow->addWidget(new QLabel(tr("Launch arguments:")));
     m_arguments = new QLineEdit;
     m_arguments->setPlaceholderText(tr("optional, used when GPU Fusion starts the program"));
+    m_arguments->setToolTip(tr("Used when GPU Fusion starts the program. If the program has its own option for choosing a GPU, put it "
+                               "here with a placeholder that GPU Fusion fills in for the GPU of the chosen mode:\n"
+                               "{luid}  {luid_pair} (high,low, as Chromium expects)  {luid_high}  {luid_low}\n"
+                               "{dxgi_index}  {vendor_id}  {vendor_hex}  {gpu_name}\n"
+                               "In Automatic mode, arguments with a placeholder are left out."));
     argsRow->addWidget(m_arguments, 1);
     editor->addLayout(argsRow);
+    auto* knownRow = new QHBoxLayout;
+    m_knownOption = richLabel();
+    m_useKnownOption = new QPushButton(tr("Use this option"));
+    knownRow->addWidget(m_knownOption, 1);
+    knownRow->addWidget(m_useKnownOption, 0, Qt::AlignTop);
+    editor->addLayout(knownRow);
     m_shareChoice = new QCheckBox(tr("Tell the program which GPU to use when GPU Fusion starts it (GPU Fusion SDK)"));
     m_shareChoice->setToolTip(tr("Sets GPUFUSION_MODE, GPUFUSION_ADAPTERS and GPUFUSION_PROFILE for the program. Programs that do not "
                                  "integrate the SDK ignore them."));
@@ -189,11 +201,13 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
     connect(m_remove, &QPushButton::clicked, this, &GpuManagerPage::removeSelected);
     connect(m_list, &QListWidget::currentRowChanged, this, [this] { refreshEditor(); });
     connect(m_modes, &QButtonGroup::idClicked, this, [this] { refreshCapability(); });
+    connect(m_arguments, &QLineEdit::textChanged, this, [this] { refreshCapability(); });
+    connect(m_useKnownOption, &QPushButton::clicked, this, &GpuManagerPage::useKnownOption);
     connect(m_apply, &QPushButton::clicked, this, [this] { applySelected(true); });
     connect(m_launch, &QPushButton::clicked, this, &GpuManagerPage::launchSelected);
     connect(m_verify, &QPushButton::clicked, this, [this] { verifySelected(20, true); });
-    connect(&m_context.hardware(), &hw::HardwareService::detectionFinished, this, [this] { refreshEditor(); });
-    connect(&m_context.preferences(), &pref::PreferenceService::changed, this, [this] { refreshCapability(); });
+    connect(&m_context.hardware(), &hw::HardwareService::detectionFinished, this, [this] { m_inputs.reset(); refreshEditor(); });
+    connect(&m_context.preferences(), &pref::PreferenceService::changed, this, [this] { m_inputs.reset(); refreshCapability(); });
 
     refreshList();
 }
@@ -338,13 +352,54 @@ void GpuManagerPage::removeSelected()
 
 // ---- editor ---------------------------------------------------------------------------------------
 
-profiles::CapabilityInputs GpuManagerPage::inputsFor(const AppProfile& p) const
+profiles::CapabilityInputs GpuManagerPage::inputsFor(const AppProfile& p)
 {
     const auto& d = m_context.hardware().latest();
     if (!d)
         return {};
-    return profiles::capabilityInputs(p.exePath, *d, m_context.preferences().lastVerification());
+    if (!m_inputs || m_inputsExe != p.exePath) {
+        m_inputs = profiles::capabilityInputs(p.exePath, *d, m_context.preferences().lastVerification());
+        m_inputsExe = p.exePath;
+    }
+    return *m_inputs;
 }
+
+void GpuManagerPage::refreshKnownOption(const AppProfile& p)
+{
+    QStringList problems;
+    const auto known = profiles::knownOptionFor(
+        p.exePath, profiles::loadKnownOptions(QDir(m_context.data().configDir()).filePath(QStringLiteral("gpu-options.json")), &problems));
+    const ThemeColors& c = colors();
+    QStringList html;
+    if (known) {
+        html << tr("<b>Known GPU option for %1:</b> <code>%2</code>").arg(known->program.toHtmlEscaped(), known->arguments.toHtmlEscaped())
+             << QStringLiteral("<span style='color:%1'>%2</span>").arg(c.textMuted.name(), known->evidence.toHtmlEscaped());
+        if (!known->caveat.isEmpty())
+            html << QStringLiteral("<span style='color:%1'>%2</span>").arg(c.warn.name(), known->caveat.toHtmlEscaped());
+    }
+    for (const QString& problem : problems)
+        html << QStringLiteral("<span style='color:%1'>%2</span>").arg(c.bad.name(), problem.toHtmlEscaped());
+    m_knownOption->setText(html.join(QStringLiteral("<br>")));
+    m_knownOption->setVisible(!html.isEmpty());
+    m_useKnownOption->setVisible(known.has_value());
+    m_useKnownOption->setEnabled(known && !m_arguments->text().contains(known->arguments));
+    m_useKnownOption->setProperty("arguments", known ? known->arguments : QString());
+}
+
+QString GpuManagerPage::knownOptionText() const { return m_knownOption->isVisibleTo(this) ? m_knownOption->text() : QString(); }
+
+void GpuManagerPage::useKnownOption()
+{
+    const QString option = m_useKnownOption->property("arguments").toString();
+    if (option.isEmpty())
+        return;
+    profiles::KnownGpuOption k;
+    k.arguments = option;
+    m_arguments->setText(profiles::withKnownOption(m_arguments->text(), k));
+    m_useKnownOption->setEnabled(false);
+}
+
+void GpuManagerPage::setArguments(const QString& arguments) { m_arguments->setText(arguments); }
 
 GpuMode GpuManagerPage::chosenMode() const
 {
@@ -384,6 +439,7 @@ void GpuManagerPage::refreshEditor()
     m_header->setText(header);
     m_arguments->setText(p->arguments);
     m_shareChoice->setChecked(p->shareGpuChoiceWithApp);
+    refreshKnownOption(*p);
     m_loading = false;
     selectMode(p->mode);
     showLastVerification(*p);
@@ -392,11 +448,14 @@ void GpuManagerPage::refreshEditor()
 
 void GpuManagerPage::refreshCapability()
 {
-    const auto p = selected();
+    auto p = selected();
     if (!p || m_loading)
         return;
+    p->arguments = m_arguments->text().trimmed(); // assess what is typed, before it is saved
     const profiles::CapabilityInputs in = inputsFor(*p);
     const QList<ModeCapability> caps = profiles::assessAllModes(*p, in);
+    if (m_useKnownOption->isVisible())
+        m_useKnownOption->setEnabled(!m_arguments->text().contains(m_useKnownOption->property("arguments").toString()));
     for (int i = 0; i < 4 && i < caps.size(); ++i)
         m_modeButtons[i]->setText(tr("%1 — %2").arg(profiles::modeText(kModes[i]), profiles::modeStatusText(caps[i].status)));
     const ModeCapability& c = caps.value(m_modes->checkedId() < 0 ? 0 : m_modes->checkedId());

@@ -101,6 +101,7 @@ target_link_libraries(gpufusion_benchmarks PUBLIC gpufusion_monitoring gpufusion
 add_library(gpufusion_profiles STATIC
     profiles/AppDiscovery.cpp profiles/AppDiscovery.h
     profiles/AppProfile.cpp profiles/AppProfile.h
+    profiles/KnownOptions.cpp profiles/KnownOptions.h
     profiles/ProfileActions.cpp profiles/ProfileActions.h
     profiles/ProfileStore.cpp profiles/ProfileStore.h
 )

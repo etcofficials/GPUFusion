@@ -9,6 +9,7 @@
 #include "monitoring/MonitorService.h"
 #include "monitoring/UsageObserver.h"
 #include "preferences/PreferenceService.h"
+#include "profiles/KnownOptions.h"
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
 #include "diagnostics/DiagnosticReport.h"
@@ -83,6 +84,8 @@ int main(int argc, char* argv[])
                                      QStringLiteral("mode"));
     const QCommandLineOption profileArgsOpt(QStringLiteral("profile-args"), QStringLiteral("With --apply-profile: launch arguments stored in the profile."),
                                             QStringLiteral("arguments"));
+    const QCommandLineOption knownOptionOpt(QStringLiteral("profile-known-option"),
+        QStringLiteral("With --apply-profile: put the program's known GPU option (if GPU Fusion knows one) first in its launch arguments."));
     const QCommandLineOption launchProfileOpt(QStringLiteral("launch-profile"),
         QStringLiteral("Start the program of a GPU profile (<exe> or profile id) with its arguments and GPU choice, and exit."), QStringLiteral("profile"));
     const QCommandLineOption verifyProfileOpt(QStringLiteral("verify-profile"),
@@ -104,7 +107,7 @@ int main(int argc, char* argv[])
         QStringLiteral("With --dispatch: measure the batch <n> times on each GPU alone and on all chosen GPUs, check outputs and report "
                        "whether all GPUs together are significantly faster."), QStringLiteral("n"));
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
-                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, launchProfileOpt, verifyProfileOpt,
+                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, launchProfileOpt, verifyProfileOpt,
                      dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
     cli.process(app);
 
@@ -253,6 +256,14 @@ int main(int argc, char* argv[])
                 p.mode = *mode;
                 if (cli.isSet(profileArgsOpt))
                     p.arguments = cli.value(profileArgsOpt);
+                if (cli.isSet(knownOptionOpt)) {
+                    const auto known = gf::profiles::knownOptionFor(
+                        exe, gf::profiles::loadKnownOptions(QDir(data.configDir()).filePath(QStringLiteral("gpu-options.json"))));
+                    if (known)
+                        p.arguments = gf::profiles::withKnownOption(p.arguments, *known);
+                    qCInfo(lcApp).noquote() << (known ? QStringLiteral("Known GPU option: %1 (%2)").arg(known->arguments, known->evidence)
+                                                      : QStringLiteral("No known GPU option for %1").arg(QFileInfo(exe).fileName()));
+                }
                 const gf::profiles::CapabilityInputs in = gf::profiles::capabilityInputs(exe, detection, preferences.lastVerification());
                 const gf::profiles::ApplyResult r = gf::profiles::applyProfile(p, preferences.manager(), in);
                 if (r.ok && profileStore.save(p, &error)) {

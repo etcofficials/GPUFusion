@@ -94,4 +94,20 @@ QList<ModeCapability> assessAllModes(const AppProfile& profile, const Capability
 // in order (LUIDs as "HHHHHHHH_LLLLLLLL"). Automatic -> none (the program decides).
 QStringList requestedAdapterLuids(GpuMode mode, const QList<pref::SelectableGpu>& gpus);
 
+// ---- GPU placeholders in launch arguments ---------------------------------------------------------
+// Many programs have their own option for choosing a GPU. A profile's launch arguments may contain
+// placeholders that GPU Fusion fills in, at every launch, for the GPU of the profile's mode
+// (Integrated -> the integrated GPU; Discrete and Both -> the discrete GPU):
+//   {luid}        HHHHHHHH_LLLLLLLL          {luid_pair}   <high>,<low> in decimal (Chromium)
+//   {luid_high}   {luid_low}  decimal parts  {dxgi_index}  DXGI enumeration index
+//   {vendor_id}   decimal                    {vendor_hex}  0x8086
+//   {gpu_name}
+// In Automatic mode (or with no such GPU) every argument containing a placeholder is left out, so the
+// program decides by itself.
+QStringList gpuPlaceholders();
+bool usesGpuPlaceholders(const QString& arguments);
+std::optional<pref::SelectableGpu> modeGpu(GpuMode mode, const QList<pref::SelectableGpu>& gpus);
+QString expandGpuPlaceholders(const QString& text, const pref::SelectableGpu& gpu);
+QStringList launchArguments(const QString& arguments, GpuMode mode, const QList<pref::SelectableGpu>& gpus);
+
 } // namespace gf::profiles

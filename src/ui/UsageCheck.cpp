@@ -10,7 +10,8 @@ QList<SelectableGpu> selectableGpus(const hw::DetectionResult& detection)
     for (const hw::Adapter& a : detection.adapters) {
         if (!a.dxgi || a.isSoftware())
             continue;
-        out << SelectableGpu{ a.name(), a.dxgi->vendorId, hw::formatLuid(a.dxgi->luid), a.classification.value == hw::AdapterClass::Integrated };
+        out << SelectableGpu{ a.name(), a.dxgi->vendorId, hw::formatLuid(a.dxgi->luid), a.classification.value == hw::AdapterClass::Integrated,
+                              a.dxgi->index };
     }
     return out;
 }

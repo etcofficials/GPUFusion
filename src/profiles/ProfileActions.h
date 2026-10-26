@@ -39,8 +39,9 @@ ApplyResult applyProfile(AppProfile& profile, pref::PreferenceManager& manager, 
 //   GPUFUSION_PROFILE=<profile id>
 QHash<QString, QString> launchEnvironment(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus);
 
-// Splits the profile's argument string the way a command line is split.
-QStringList profileArguments(const AppProfile& profile);
+// The profile's arguments, split like a command line, with GPU placeholders filled in for its mode
+// (see launchArguments).
+QStringList profileArguments(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus);
 
 std::optional<quint32> launchProfile(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus, QString* error);
 

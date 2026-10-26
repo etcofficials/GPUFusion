@@ -22,7 +22,8 @@ QList<pref::SelectableGpu> selectableGpus(const hw::DetectionResult& detection)
     for (const hw::Adapter& a : detection.adapters) {
         if (!a.dxgi || a.isSoftware())
             continue;
-        out << pref::SelectableGpu{ a.name(), a.dxgi->vendorId, hw::formatLuid(a.dxgi->luid), a.classification.value == hw::AdapterClass::Integrated };
+        out << pref::SelectableGpu{ a.name(), a.dxgi->vendorId, hw::formatLuid(a.dxgi->luid), a.classification.value == hw::AdapterClass::Integrated,
+                                    a.dxgi->index };
     }
     return out;
 }
@@ -83,8 +84,11 @@ ApplyResult applyProfile(AppProfile& profile, pref::PreferenceManager& manager, 
     r.ok = true;
     if (value == GpuPreference::NotSet) {
         r.message = cap.write ? QStringLiteral("Windows decides: no per-app value is stored for %1.").arg(QFileInfo(r.exePath).fileName())
-                              : QStringLiteral("No Windows value is stored (it would not select this GPU here); the choice is passed to the "
-                                               "program when GPU Fusion launches it.");
+                  : usesGpuPlaceholders(profile.arguments)
+                      ? QStringLiteral("No Windows value is stored (it would not select this GPU here); the GPU is passed to the program "
+                                       "in its launch arguments when GPU Fusion starts it.")
+                      : QStringLiteral("No Windows value is stored (it would not select this GPU here); the choice is passed to the "
+                                       "program when GPU Fusion launches it.");
     } else {
         r.message = QStringLiteral("Stored and read back: %1").arg(r.storedValue);
     }
@@ -105,15 +109,15 @@ QHash<QString, QString> launchEnvironment(const AppProfile& profile, const QList
     return env;
 }
 
-QStringList profileArguments(const AppProfile& profile)
+QStringList profileArguments(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus)
 {
-    return QProcess::splitCommand(profile.arguments);
+    return launchArguments(profile.arguments, profile.mode, gpus);
 }
 
 std::optional<quint32> launchProfile(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus, QString* error)
 {
     const QString exe = resolveCurrentExecutable(profile.exePath);
-    return pref::win::launchDetachedPid(exe, profileArguments(profile), error, launchEnvironment(profile, gpus));
+    return pref::win::launchDetachedPid(exe, profileArguments(profile, gpus), error, launchEnvironment(profile, gpus));
 }
 
 mon::UsageVerdict evaluateProfileEvidence(mon::UsageEvidence e, GpuMode mode, const QList<pref::SelectableGpu>& gpus,
@@ -171,7 +175,7 @@ mon::UsageVerdict verifyProfile(AppProfile& profile, const hw::DetectionResult& 
     const QList<pref::SelectableGpu> gpus = selectableGpus(detection);
     mon::ObserveOptions o;
     o.exe = resolveCurrentExecutable(profile.exePath);
-    o.arguments = profileArguments(profile);
+    o.arguments = profileArguments(profile, gpus);
     o.environment = launchEnvironment(profile, gpus);
     o.seconds = seconds;
     mon::UsageEvidence e = mon::observeUsage(mon::targetsFrom(detection), o, cancel, progress);
