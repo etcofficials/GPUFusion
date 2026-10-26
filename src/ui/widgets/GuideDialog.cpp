@@ -54,6 +54,7 @@ GuideDialog::GuideDialog(const QString& document, QWidget* parent) : QDialog(par
     resize(900, 760);
     auto* layout = new QVBoxLayout(this);
     m_view = new QTextBrowser;
+    m_view->setAccessibleName(tr("User guide"));
     m_view->setOpenLinks(true);
     m_view->setOpenExternalLinks(false); // handled below: only web links leave the app
     layout->addWidget(m_view, 1);

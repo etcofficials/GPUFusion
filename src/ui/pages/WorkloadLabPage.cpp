@@ -108,6 +108,7 @@ WorkloadLabPage::WorkloadLabPage(AppContext& context, QWidget* parent) : QWidget
     m_size->addItem(tr("Standard — 1024 × 1024"), QStringLiteral("standard"));
     m_size->addItem(tr("Heavy — 2048 × 2048"), QStringLiteral("heavy"));
     m_size->setCurrentIndex(1);
+    m_size->setAccessibleName(tr("Hash workload size"));
 
     layout->addWidget(buildPanel(m_split, tr("Split compute across GPUs"),
         tr("One image of the hash workload (512 integer hash steps per pixel) is divided between the GPUs — and in one mode the CPU — "
@@ -186,7 +187,8 @@ QWidget* WorkloadLabPage::buildPanel(Panel& panel, const QString& title, const Q
     panel.table->verticalHeader()->hide();
     panel.table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     panel.table->setSelectionMode(QAbstractItemView::NoSelection);
-    panel.table->setFocusPolicy(Qt::NoFocus);
+    panel.table->setFocusPolicy(Qt::StrongFocus); // read-only, reachable for keyboard and screen-reader users
+    panel.table->setAccessibleName(tr("Experiment results"));
     panel.table->setShowGrid(false);
     panel.table->setAlternatingRowColors(true);
     panel.table->setWordWrap(true);

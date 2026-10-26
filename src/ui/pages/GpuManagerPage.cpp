@@ -191,8 +191,11 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
     m_capability = richLabel();
     editor->addWidget(m_capability);
     auto* argsRow = new QHBoxLayout;
-    argsRow->addWidget(new QLabel(tr("Launch arguments:")));
+    auto* argsLabel = new QLabel(tr("&Launch arguments:"));
+    argsRow->addWidget(argsLabel);
     m_arguments = new QLineEdit;
+    argsLabel->setBuddy(m_arguments); // Alt+L focuses the field
+    m_arguments->setAccessibleName(tr("Launch arguments"));
     m_arguments->setPlaceholderText(tr("optional, used when GPU Fusion starts the program"));
     m_arguments->setToolTip(tr("Used when GPU Fusion starts the program. If the program has its own option for choosing a GPU, put it "
                                "here with a placeholder that GPU Fusion fills in for the GPU of the chosen mode:\n"
@@ -362,9 +365,11 @@ void GpuManagerPage::pickDiscovered()
                          "changed by this list.")));
     auto* filter = new QLineEdit;
     filter->setPlaceholderText(tr("Filter"));
+    filter->setAccessibleName(tr("Filter programs"));
     filter->setClearButtonEnabled(true);
     v->addWidget(filter);
     auto* list = new QListWidget;
+    list->setAccessibleName(tr("Programs found on this PC"));
     v->addWidget(list, 1);
     auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     v->addWidget(box);

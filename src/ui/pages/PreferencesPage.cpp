@@ -121,6 +121,7 @@ PreferencesPage::PreferencesPage(AppContext& context, QWidget* parent) : QWidget
     m_verdict->setWordWrap(true);
     verifyCard->body()->addWidget(m_verdict);
     m_verification = makeTable({ tr("Preference set for the probe"), tr("GPU the probe's Direct3D device used"), tr("First GPU in its adapter list") });
+    m_verification->setAccessibleName(tr("What each Windows preference did on this PC"));
     m_verification->setColumnWidth(0, 200);
     m_verification->setColumnWidth(1, 260);
     m_verification->setFixedHeight(4 * 24 + 30);
@@ -216,6 +217,7 @@ PreferencesPage::PreferencesPage(AppContext& context, QWidget* parent) : QWidget
     historyCard->body()->addWidget(note(tr("Every change GPU Fusion makes is recorded with the previous value before Windows is touched. "
                                            "Undo puts the previous value back; it refuses if the setting was changed elsewhere since.")));
     m_history = makeTable({ tr("When"), tr("Application"), tr("Before → after"), tr("") });
+    m_history->setAccessibleName(tr("Change history"));
     m_history->setColumnWidth(0, 130);
     m_history->setColumnWidth(1, 280);
     m_history->setColumnWidth(2, 260);

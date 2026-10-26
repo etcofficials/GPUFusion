@@ -40,14 +40,15 @@ QLabel* muted(const QString& text)
 }
 
 // A read-only table sized to its content (no inner scrolling), long cells wrapped.
-QTableWidget* tableFrom(const diag::Table& t, int firstColumnWidth)
+QTableWidget* tableFrom(const diag::Table& t, int firstColumnWidth, const QString& name)
 {
     auto* w = new QTableWidget(int(t.rows.size()), int(t.header.size()));
+    w->setAccessibleName(name);
     w->setHorizontalHeaderLabels(t.header);
     w->verticalHeader()->hide();
     w->setEditTriggers(QAbstractItemView::NoEditTriggers);
     w->setSelectionMode(QAbstractItemView::NoSelection);
-    w->setFocusPolicy(Qt::NoFocus);
+    w->setFocusPolicy(Qt::StrongFocus); // read-only, but reachable with Tab so keyboard and screen-reader users can read it
     w->setShowGrid(false);
     w->setAlternatingRowColors(true);
     w->setWordWrap(true);
@@ -181,7 +182,7 @@ void DiagnosticsPage::refresh()
     const diag::Table adapters = report.adapterTable();
     if (!adapters.rows.isEmpty()) {
         auto* card = new Card(tr("Graphics adapters and APIs"));
-        card->body()->addWidget(tableFrom(adapters, 170));
+        card->body()->addWidget(tableFrom(adapters, 170, QObject::tr("Graphics adapters")));
         card->body()->addWidget(muted(tr("Details for each adapter, including plain-language explanations of failures, are on the GPUs page.")));
         m_sections->addWidget(card);
     }
@@ -198,7 +199,7 @@ void DiagnosticsPage::refresh()
     monitoring->body()->addWidget(providers);
     const diag::Table metrics = report.metricTable();
     if (!metrics.rows.isEmpty()) {
-        monitoring->body()->addWidget(tableFrom(metrics, 200));
+        monitoring->body()->addWidget(tableFrom(metrics, 200, QObject::tr("Monitoring readings per GPU")));
         monitoring->body()->addWidget(muted(tr("\"Available\" means the latest sample had a real reading. Unsupported metrics are never shown as zero. "
                                                "Last collection took %1 ms.").arg(in.snapshot->collectionMs, 0, 'f', 2)));
     } else {
@@ -210,7 +211,7 @@ void DiagnosticsPage::refresh()
         auto* card = new Card(tr("Multi-GPU compatibility"));
         card->body()->addWidget(muted(tr("Which ways of sharing work between the GPUs can run here, judged from the detected capabilities. "
                                          "\"Feasible\" does not mean faster: that is measured in the Workload Lab (Phase 8).")));
-        card->body()->addWidget(tableFrom(report.multiGpuTable(), 300));
+        card->body()->addWidget(tableFrom(report.multiGpuTable(), 300, QObject::tr("Multi-GPU feasibility")));
         m_sections->addWidget(card);
     }
 
@@ -219,7 +220,7 @@ void DiagnosticsPage::refresh()
         preference->body()->addWidget(muted(tr("Verified %1 with GPUFusionProbe.exe; original value restored: %2. Applications with a preference: %3.")
                                                 .arg(QLocale().toString(in.preferenceVerification->time, QLocale::ShortFormat),
                                                      in.preferenceVerification->restored ? tr("yes") : tr("no")).arg(in.configuredPreferences)));
-        preference->body()->addWidget(tableFrom(report.preferenceTable(), 260));
+        preference->body()->addWidget(tableFrom(report.preferenceTable(), 260, QObject::tr("GPU preference verification")));
     } else {
         preference->body()->addWidget(muted(tr("Not verified yet. Run the verification on the GPU Preferences page.")));
     }

@@ -114,7 +114,7 @@ BenchmarksPage::BenchmarksPage(AppContext& context, QWidget* parent) : QWidget(p
     m_tests->setRootIsDecorated(false);
     m_tests->setItemsExpandable(false);
     m_tests->setSelectionMode(QAbstractItemView::NoSelection);
-    m_tests->setFocusPolicy(Qt::NoFocus);
+    m_tests->setFocusPolicy(Qt::StrongFocus); // arrow keys + Space choose benchmarks without a mouse
     m_tests->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_tests->setAccessibleName(tr("Benchmarks to run"));
     row->addWidget(m_tests, 1);
@@ -127,6 +127,7 @@ BenchmarksPage::BenchmarksPage(AppContext& context, QWidget* parent) : QWidget(p
     m_preset->addItem(tr("Standard — 1024 × 1024, 512 iterations"), QStringLiteral("standard"));
     m_preset->addItem(tr("Heavy — 2048 × 2048, 512 iterations"), QStringLiteral("heavy"));
     m_preset->setCurrentIndex(1);
+    m_preset->setAccessibleName(tr("Workload size"));
     m_preset->setToolTip(tr("Size of the hash workload. Results are only ever compared with earlier runs of the same size."));
     side->addWidget(m_preset);
     m_runs = muted(QString());
@@ -184,7 +185,8 @@ BenchmarksPage::BenchmarksPage(AppContext& context, QWidget* parent) : QWidget(p
     m_table->verticalHeader()->hide();
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionMode(QAbstractItemView::NoSelection);
-    m_table->setFocusPolicy(Qt::NoFocus);
+    m_table->setFocusPolicy(Qt::StrongFocus); // read-only, reachable for keyboard and screen-reader users
+    m_table->setAccessibleName(tr("Benchmark results"));
     m_table->setShowGrid(false);
     m_table->setAlternatingRowColors(true);
     m_table->setWordWrap(true);

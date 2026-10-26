@@ -118,6 +118,14 @@ JobBatchPanel::JobBatchPanel(AppContext& context, QWidget* parent) : Card(tr("Yo
                              "all GPUs; check that outputs match; report a difference only when it is statistically significant."));
     form->addRow(tr("Compare runs:"), m_compare);
     body()->addLayout(form);
+    // Named explicitly: a form label is not always passed on as the field's accessible name.
+    m_kind->setAccessibleName(tr("Job type"));
+    m_command->setAccessibleName(tr("Command template"));
+    m_inputs->setAccessibleName(tr("Input files"));
+    m_output->setAccessibleName(tr("Output folder"));
+    m_pattern->setAccessibleName(tr("Output file name"));
+    m_gpus->setAccessibleName(tr("GPUs to use"));
+    m_compare->setAccessibleName(tr("Compare runs"));
     auto* buttons = new QHBoxLayout;
     m_run = new QPushButton(tr("Run"));
     m_cancelButton = new QPushButton(tr("Cancel"));
