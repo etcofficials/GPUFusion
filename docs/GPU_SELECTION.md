@@ -127,6 +127,16 @@ the probe with `--adapter 00000000_0000870F`, the Intel GPU's LUID at that boot
 (`tst_running_live`). With the program already running, the dialog waited; dismissing it started
 nothing and closed nothing.
 
+### Backup and transfer (1.6)
+
+*Export…* writes every profile to one JSON file. *Import…* adds them back on this PC or another.
+Profiles that already exist are kept unless you choose to replace them. What is imported: program
+path, name, mode, launch arguments (placeholders stay placeholders, valid on any PC) and the SDK
+setting. What is not imported: verification results and applied Windows values, because "verified
+on this PC" is about that PC's hardware. Importing changes no Windows setting. Programs that are not
+installed are imported, listed, and shown as missing until they are. Command line:
+`--export-profiles <file>`, `--import-profiles <file> [--replace-existing]`.
+
 ### Chromium-based programs detected by their files (1.4)
 
 Programs built on Chromium (browsers, Electron and CEF apps) ship `icudtl.dat` and a V8 snapshot

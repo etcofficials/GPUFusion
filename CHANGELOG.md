@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0 — 2026-10-26
+
+- **Profile backup and transfer.** *Export…* / *Import…* in the GPU Manager (and `--export-profiles
+  <file>`, `--import-profiles <file> [--replace-existing]`) save every GPU profile to one JSON file and
+  add them back, on this PC or another.
+  - Import keeps profiles that already exist unless you choose to replace them.
+  - Import changes no Windows setting: a profile's mode takes effect when you apply it.
+  - Verification results and applied Windows values are not imported, because they describe the PC
+    they were made on.
+  - Programs that are not installed are listed.
+
 ## 1.5.1 — 2026-10-26
 
 Hardening of the 1.2–1.5 work.

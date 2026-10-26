@@ -247,6 +247,12 @@
 - Failing disk: the debug tree was damaged (truncated `.moc`). It was rebuilt, and `build.ps1`
   recovers from that now.
 
+## 1.6 — profile backup and transfer (2026-10-26)
+
+- Export / import of all profiles (GUI + CLI). Import is additive by default, never changes Windows
+  settings, and drops per-PC results (verification, applied values). Motivated by the failing disk
+  that holds the data folder.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

@@ -113,7 +113,17 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Running program handled with consent | ✔ | interactive dialog; dismissing it starts and closes nothing (checked) |
 | Correct exit codes for scripted use | ✔ | headless modes return `QApplication::exit`'s code |
 
+## 1.6 — profile backup and transfer
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Profiles can be backed up and restored / moved | ✔ | export/import (GUI + CLI); `tst_profiles::exportAndImport`, GUI round trip in `tst_gpumanager_ui` |
+| No claims carried to other hardware | ✔ | verification results and applied values dropped on import |
+| Import never changes Windows settings | ✔ | modes take effect only on Apply |
+
 ## Tests at release
+
+1.6.0: 31 CTest entries, 227 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.5.1: 31 CTest entries, 226 cases, all passing (release, reference-machine expectations); full
 suite and page smoke tests also pass in a clean debug build (2026-10-26).
