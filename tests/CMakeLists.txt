@@ -93,6 +93,11 @@ gpufusion_add_test(tst_profiles_live tst_profiles_live.cpp LABELS hardware regis
 target_link_libraries(tst_profiles_live PRIVATE gpufusion_profiles gpufusion_workloads)
 add_dependencies(tst_profiles_live GPUFusionProbe)
 set_tests_properties(tst_profiles_live PROPERTIES FIXTURES_REQUIRED probe_preference RUN_SERIAL TRUE TIMEOUT 240)
+# Live "GPU profile" check on the Applications page, with the probe as the running program.
+gpufusion_add_test(tst_applications_ui tst_applications_ui.cpp LABELS hardware)
+target_link_libraries(tst_applications_ui PRIVATE gpufusion_ui)
+add_dependencies(tst_applications_ui GPUFusionProbe)
+set_tests_properties(tst_applications_ui PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 # Asks the probe (only the probe) to close; serial, so it never touches probes of other tests.
 gpufusion_add_test(tst_running_live tst_running_live.cpp LABELS hardware)
 target_link_libraries(tst_running_live PRIVATE gpufusion_profiles)

@@ -80,10 +80,16 @@ MainWindow::MainWindow(AppContext& context, QWidget* parent) : QMainWindow(paren
             new DashboardPage(m_context));
     addPage({ QStringLiteral("gpus"), tr("GPUs"), tr("Graphics adapters Windows exposes, their drivers and tested capabilities.") },
             new GpusPage(m_context));
+    auto* applications = new ApplicationsPage(m_context);
+    auto* manager = new GpuManagerPage(m_context);
     addPage({ QStringLiteral("applications"), tr("Applications"), tr("Which processes use which GPU, per process. Adapter-wide totals are on the Dashboard.") },
-            new ApplicationsPage(m_context));
+            applications);
     addPage({ QStringLiteral("manager"), tr("GPU Manager"), tr("A GPU profile for any program: choose its GPU, apply, launch and verify what it really uses.") },
-            new GpuManagerPage(m_context));
+            manager);
+    connect(applications, &ApplicationsPage::profileRequested, this, [this, manager](const QString& exe) {
+        showPage(QStringLiteral("manager"));
+        manager->addProgram(exe); // selects its profile; creates one if it has none
+    });
     addPage({ QStringLiteral("preferences"), tr("GPU Preferences"), tr("The Windows per-app graphics preference — what it does here, and changing it safely.") },
             new PreferencesPage(m_context));
     addPage({ QStringLiteral("workloads"), tr("Workload Lab"), tr("Can both GPUs make one job faster? Measured experiments, compared with the best single device.") },

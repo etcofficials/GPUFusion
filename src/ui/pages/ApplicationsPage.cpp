@@ -3,6 +3,8 @@
 #include "hardware/HardwareService.h"
 #include "monitoring/MonitorService.h"
 #include "platform/windows/GpuPreferenceReader.h"
+#include "profiles/ProfileActions.h"
+#include "profiles/ProfileStore.h"
 #include "ui/AppContext.h"
 #include "ui/Theme.h"
 #include "ui/models/ProcessTableModel.h"
@@ -82,14 +84,15 @@ ApplicationsPage::ApplicationsPage(AppContext& context, QWidget* parent) : QWidg
     header->setSectionResizeMode(QHeaderView::Interactive);
     header->setSectionResizeMode(ProcessTableModel::Application, QHeaderView::Stretch);
     header->setMinimumSectionSize(40);
-    m_table->setColumnWidth(ProcessTableModel::Pid, 55);
-    m_table->setColumnWidth(ProcessTableModel::Gpu, 160);
-    m_table->setColumnWidth(ProcessTableModel::Usage, 88);
-    m_table->setColumnWidth(ProcessTableModel::Engine, 100);
-    m_table->setColumnWidth(ProcessTableModel::Dedicated, 76);
-    m_table->setColumnWidth(ProcessTableModel::Shared, 72);
-    m_table->setColumnWidth(ProcessTableModel::Activity, 92);
-    m_table->setColumnWidth(ProcessTableModel::Preference, 110);
+    m_table->setColumnWidth(ProcessTableModel::Pid, 50);
+    m_table->setColumnWidth(ProcessTableModel::Gpu, 140);
+    m_table->setColumnWidth(ProcessTableModel::Usage, 80);
+    m_table->setColumnWidth(ProcessTableModel::Engine, 90);
+    m_table->setColumnWidth(ProcessTableModel::Dedicated, 72);
+    m_table->setColumnWidth(ProcessTableModel::Shared, 66);
+    m_table->setColumnWidth(ProcessTableModel::Activity, 86);
+    m_table->setColumnWidth(ProcessTableModel::Preference, 96);
+    m_table->setColumnWidth(ProcessTableModel::Profile, 120);
     m_table->setAccessibleName(tr("Processes and their GPU usage"));
 
     auto* detailsCard = new Card(tr("Selected process"));
@@ -101,8 +104,12 @@ ApplicationsPage::ApplicationsPage(AppContext& context, QWidget* parent) : QWidg
     m_details->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_openFolder = new QPushButton(tr("Open file location"));
     m_openFolder->setEnabled(false);
+    m_profileButton = new QPushButton(tr("GPU profile…"));
+    m_profileButton->setToolTip(tr("Open this program in the GPU Manager (a profile is created if it has none)"));
+    m_profileButton->setEnabled(false);
     auto* detailButtons = new QHBoxLayout;
     detailButtons->addWidget(m_openFolder);
+    detailButtons->addWidget(m_profileButton);
     detailButtons->addStretch();
     detailsCard->body()->addWidget(m_details, 1);
     detailsCard->body()->addLayout(detailButtons);
@@ -133,6 +140,10 @@ ApplicationsPage::ApplicationsPage(AppContext& context, QWidget* parent) : QWidg
     connect(&m_context.hardware(), &hw::HardwareService::detectionFinished, this, &ApplicationsPage::onAdaptersChanged);
     connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this, &ApplicationsPage::updateDetails);
     connect(m_table, &QTableView::pressed, this, [this] { m_userPicked = true; });
+    connect(m_profileButton, &QPushButton::clicked, this, [this] {
+        if (const ProcessSample* p = m_model->process(m_detailsKey); p && !p->path.isEmpty())
+            Q_EMIT profileRequested(QDir::toNativeSeparators(p->path));
+    });
     connect(m_openFolder, &QPushButton::clicked, this, [this] {
         if (const ProcessSample* p = m_model->process(m_detailsKey); p && !p->path.isEmpty())
             QProcess::startDetached(QStringLiteral("explorer.exe"), { QStringLiteral("/select,"), QDir::toNativeSeparators(p->path) });
@@ -165,6 +176,9 @@ void ApplicationsPage::reloadPreferences()
 {
     const win::GpuPreferences prefs = win::readUserGpuPreferences();
     m_model->setPreferences(prefs.byPath);
+    const auto& detection = m_context.hardware().latest();
+    if (m_context.profiles())
+        m_model->setProfiles(m_context.profiles()->list(), detection ? profiles::selectableGpus(*detection) : QList<pref::SelectableGpu>{});
 }
 
 void ApplicationsPage::onAdaptersChanged()
@@ -269,6 +283,7 @@ void ApplicationsPage::updateDetails()
     if (!p) {
         html = tr("The selected process has exited.");
         m_openFolder->setEnabled(false);
+        m_profileButton->setEnabled(false);
     } else {
         html = QStringLiteral("<b style='color:%1'>%2</b> &nbsp; PID %3<br>%4<br>")
                    .arg(c.text.name(), p->name.toHtmlEscaped()).arg(p->pid)
@@ -278,6 +293,12 @@ void ApplicationsPage::updateDetails()
         if (pref == GpuPreference::PowerSaving || pref == GpuPreference::HighPerformance)
             html += tr(" — a preference only influences apps that let Windows pick the adapter; the rows above show where this one actually ran.");
         html += QStringLiteral("<br>");
+        const profiles::LiveCheck check = m_model->profileCheck(*p);
+        if (check.state != profiles::LiveCheck::State::NoProfile) {
+            const QColor tone = check.state == profiles::LiveCheck::State::Matches ? c.good
+                              : check.state == profiles::LiveCheck::State::Elsewhere ? c.warn : c.textMuted;
+            html += tr("GPU profile: <span style='color:%1'>%2</span><br>").arg(tone.name(), check.detail.toHtmlEscaped());
+        }
         if (p->adapters.isEmpty())
             html += tr("No GPU footprint on any adapter GPU Fusion can inspect for this process.");
         for (const ProcessAdapterUsage& u : p->adapters) {
@@ -294,6 +315,7 @@ void ApplicationsPage::updateDetails()
                                  : QString());
         }
         m_openFolder->setEnabled(!p->path.isEmpty());
+        m_profileButton->setEnabled(!p->path.isEmpty() && m_context.profiles());
     }
     if (m_details->text() != html) // QLabel::setText re-lays out the page
         m_details->setText(html);

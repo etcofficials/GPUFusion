@@ -25,6 +25,10 @@ class ApplicationsPage : public QWidget {
 public:
     explicit ApplicationsPage(AppContext& context, QWidget* parent = nullptr);
 
+Q_SIGNALS:
+    // The user asked to open the GPU profile of the program at `exePath` (in the GPU Manager).
+    void profileRequested(const QString& exePath);
+
 protected:
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
@@ -49,6 +53,7 @@ private:
     QTableView* m_table;
     QLabel* m_details;
     QPushButton* m_openFolder;
+    QPushButton* m_profileButton;
     QTimer m_preferenceTimer;
     QString m_detailsKey;
     bool m_autoSelected = false;

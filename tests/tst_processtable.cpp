@@ -1,5 +1,6 @@
 // The Applications table model: rows are updated in place by (pid, adapter), processes that exit
 // disappear, a selected row keeps its identity across refreshes, and filters behave.
+#include "profiles/ProfileStore.h"
 #include "ui/models/ProcessTableModel.h"
 
 #include <QAbstractItemModelTester>
@@ -162,6 +163,52 @@ private Q_SLOTS:
             prefs << model.index(r, ProcessTableModel::Preference).data().toString();
         QVERIFY(prefs.contains(QStringLiteral("High performance")));
         QVERIFY(prefs.contains(QString())); // not set -> blank, not a guessed value
+    }
+
+    // The live GPU-profile column: matches / on another GPU / no GPU work / no profile, and every row of
+    // a profiled process is refreshed when its activity changes on any adapter.
+    void profileColumnComparesLiveUseWithTheProfile()
+    {
+        using namespace gf::profiles;
+        const gf::pref::SelectableGpu nv{ QStringLiteral("GT 730"), 0x10DE, gf::hw::formatLuid(10), false, 0 };
+        const gf::pref::SelectableGpu intel{ QStringLiteral("HD Graphics"), 0x8086, gf::hw::formatLuid(20), true, 1 };
+        ProcessTableModel model;
+        model.setAdapters({ { 10, { nv.name, false } }, { 20, { intel.name, false } } });
+        AppProfile onIntel = newProfile(QStringLiteral("C:\\Apps\\video.exe"));
+        onIntel.mode = GpuMode::Integrated;
+        AppProfile onNv = newProfile(QStringLiteral("C:\\Apps\\game.exe"));
+        onNv.mode = GpuMode::Discrete;
+        AppProfile automatic = newProfile(QStringLiteral("C:\\Apps\\auto.exe"));
+        model.setProfiles({ onIntel, onNv, automatic }, { nv, intel });
+
+        model.update(snapshot({ proc(1, QStringLiteral("video.exe"), { use(10, 30) }), proc(2, QStringLiteral("game.exe"), { use(10, 40) }),
+                                proc(3, QStringLiteral("auto.exe"), { use(10, 5) }), proc(4, QStringLiteral("other.exe"), { use(10, 9) }) }));
+        auto profileText = [&](const QString& exe) {
+            for (int r = 0; r < model.rowCount(); ++r)
+                if (model.index(r, ProcessTableModel::Application).data().toString() == exe)
+                    return model.index(r, ProcessTableModel::Profile).data().toString();
+            return QStringLiteral("<missing>");
+        };
+        QVERIFY(profileText(QStringLiteral("video.exe")).startsWith(QStringLiteral("✗")));      // asks for Intel, works on the GT 730
+        for (int r = 0; r < model.rowCount(); ++r)                                                // where instead: in the tooltip
+            if (model.index(r, ProcessTableModel::Application).data().toString() == QStringLiteral("video.exe"))
+                QVERIFY(model.index(r, ProcessTableModel::Profile).data(Qt::ToolTipRole).toString().contains(QStringLiteral("Working on GT 730")));
+        QVERIFY(profileText(QStringLiteral("game.exe")).startsWith(QStringLiteral("✓")));
+        QCOMPARE(profileText(QStringLiteral("auto.exe")), QStringLiteral("Automatic"));
+        QCOMPARE(profileText(QStringLiteral("other.exe")), QString());                          // no profile: blank
+
+        // video.exe moves to the Intel GPU (a new row appears, the GT 730 row goes idle): its check follows.
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        model.update(snapshot({ proc(1, QStringLiteral("video.exe"), { use(10, 0, 1024), use(20, 50) }), proc(2, QStringLiteral("game.exe"), { use(10, 40) }),
+                                proc(3, QStringLiteral("auto.exe"), { use(10, 5) }), proc(4, QStringLiteral("other.exe"), { use(10, 9) }) }));
+        for (int r = 0; r < model.rowCount(); ++r)
+            if (model.index(r, ProcessTableModel::Application).data().toString() == QStringLiteral("video.exe"))
+                QVERIFY2(model.index(r, ProcessTableModel::Profile).data().toString().startsWith(QStringLiteral("✓")),
+                         qPrintable(model.index(r, ProcessTableModel::Profile).data().toString()));
+        QVERIFY(changed.count() >= 1);
+
+        model.update(snapshot({ proc(1, QStringLiteral("video.exe"), { use(20, 0, 1024) }) }));                  // memory only
+        QVERIFY(profileText(QStringLiteral("video.exe")).endsWith(QStringLiteral("idle")));
     }
 
     void nonOkValuesShowTheirState()

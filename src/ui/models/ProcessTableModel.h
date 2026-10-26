@@ -1,6 +1,7 @@
 #pragma once
 
 #include "monitoring/ProcessModel.h"
+#include "profiles/LiveCheck.h"
 
 #include <QAbstractTableModel>
 #include <QHash>
@@ -15,7 +16,7 @@ namespace gf::ui {
 class ProcessTableModel : public QAbstractTableModel {
     Q_OBJECT
 public:
-    enum Column { Application, Pid, Gpu, Usage, Engine, Dedicated, Shared, Activity, Preference, ColumnCount };
+    enum Column { Application, Pid, Gpu, Usage, Engine, Dedicated, Shared, Activity, Preference, Profile, ColumnCount };
     static constexpr int SortRole = Qt::UserRole;
     static constexpr int KeyRole = Qt::UserRole + 1;      // QString "pid:luid"
     static constexpr int LuidRole = Qt::UserRole + 2;     // quint64 (0 = no adapter)
@@ -27,6 +28,9 @@ public:
 
     void setAdapters(const QHash<quint64, AdapterInfo>& adapters) { m_adapters = adapters; }
     void setPreferences(const QHash<QString, mon::GpuPreference>& byPath);
+    // GPU profiles by program (main + variants), for the live "GPU profile" check of running processes.
+    void setProfiles(const QList<profiles::AppProfile>& profiles, const QList<pref::SelectableGpu>& gpus);
+    profiles::LiveCheck profileCheck(const mon::ProcessSample& process) const;
     void update(const mon::ProcessSnapshot& snapshot);
 
     // Process for a key ("pid:luid"); nullptr if it is no longer present.
@@ -55,6 +59,8 @@ private:
     QList<mon::ProcessSample> m_processes;
     QHash<quint64, AdapterInfo> m_adapters;
     QHash<QString, mon::GpuPreference> m_preferences;
+    QHash<QString, QList<profiles::AppProfile>> m_profiles; // normalized executable path -> profiles
+    QList<pref::SelectableGpu> m_gpus;
     mutable QHash<QString, QIcon> m_icons;
 };
 

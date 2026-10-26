@@ -3,7 +3,10 @@
 #include "platform/windows/GpuPreferenceReader.h"
 #include "ui/Theme.h"
 
+#include "profiles/ProfileStore.h"
+
 #include <QFileIconProvider>
+#include <QSet>
 #include <QFileInfo>
 #include <QSet>
 
@@ -40,6 +43,34 @@ void ProcessTableModel::setPreferences(const QHash<QString, GpuPreference>& byPa
     m_preferences = byPath;
     if (!m_rows.isEmpty())
         Q_EMIT dataChanged(index(0, Preference), index(int(m_rows.size()) - 1, Preference));
+}
+
+void ProcessTableModel::setProfiles(const QList<profiles::AppProfile>& list, const QList<pref::SelectableGpu>& gpus)
+{
+    QHash<QString, QList<profiles::AppProfile>> byPath;
+    for (const profiles::AppProfile& p : list) {
+        // Both the stored path and its current version (versioned install folders) identify the program.
+        QSet<QString> keys{ profiles::normalizedPath(p.exePath), profiles::normalizedPath(profiles::resolveCurrentExecutable(p.exePath)) };
+        for (const QString& k : keys)
+            byPath[k] << p;
+    }
+    m_profiles = byPath;
+    m_gpus = gpus;
+    if (!m_rows.isEmpty())
+        Q_EMIT dataChanged(index(0, Profile), index(int(m_rows.size()) - 1, Profile));
+}
+
+profiles::LiveCheck ProcessTableModel::profileCheck(const ProcessSample& process) const
+{
+    if (process.path.isEmpty() || m_profiles.isEmpty())
+        return {};
+    const auto it = m_profiles.constFind(profiles::normalizedPath(process.path));
+    if (it == m_profiles.cend())
+        return {};
+    QHash<quint64, QString> names;
+    for (auto a = m_adapters.cbegin(); a != m_adapters.cend(); ++a)
+        names.insert(a.key(), a->software ? QStringLiteral("%1 (software renderer)").arg(a->name) : a->name);
+    return profiles::liveCheck(*it, process.adapters, m_gpus, names);
 }
 
 GpuPreference ProcessTableModel::preferenceFor(const QString& path) const
@@ -103,6 +134,21 @@ void ProcessTableModel::update(const ProcessSnapshot& snapshot)
         m_rows[*it] = r;
         if (!same)
             changed << *it;
+    }
+    // The GPU-profile column of a row depends on the process's activity on every adapter, so when one
+    // row of a program with a profile changes, all of that process's rows are signalled.
+    if (!m_profiles.isEmpty() && !changed.isEmpty()) {
+        QSet<quint32> pids;
+        for (int i : std::as_const(changed))
+            if (m_profiles.contains(profiles::normalizedPath(incoming[m_rows[i].processIndex].path)))
+                pids.insert(m_rows[i].pid);
+        if (!pids.isEmpty()) {
+            QSet<int> all(changed.begin(), changed.end());
+            for (int i = 0; i < m_rows.size(); ++i)
+                if (pids.contains(m_rows[i].pid))
+                    all.insert(i);
+            changed = QList<int>(all.begin(), all.end());
+        }
     }
     std::sort(changed.begin(), changed.end());
     for (int i = 0; i < changed.size();) { // signal contiguous runs
@@ -173,6 +219,7 @@ QVariant ProcessTableModel::headerData(int section, Qt::Orientation orientation,
         case Shared:      return tr("Shared");
         case Activity:    return tr("Activity");
         case Preference:  return tr("Preference");
+        case Profile:     return tr("GPU profile");
         default:          return {};
         }
     }
@@ -183,6 +230,8 @@ QVariant ProcessTableModel::headerData(int section, Qt::Orientation orientation,
         case Shared:     return tr("System memory this process has mapped for this adapter");
         case Activity:   return tr("Active = used an engine in the latest sample. Memory only = holds GPU memory but did no GPU work, which is not counted as using the GPU.");
         case Preference: return tr("The per-app setting in Windows Settings > Display > Graphics. A preference is not proof of which GPU the app uses.");
+        case Profile:    return tr("The program's GPU Fusion profile and whether it is working on that GPU right now (✓ yes, ✗ on another GPU). "
+                                   "Nothing is launched for this check.");
         default:         return {};
         }
     }
@@ -217,7 +266,7 @@ QVariant ProcessTableModel::data(const QModelIndex& index, int role) const
         if (role == Qt::TextAlignmentRole) return int(Qt::AlignRight | Qt::AlignVCenter);
         break;
     case Gpu:
-        if (role == Qt::DisplayRole || role == SortRole) return adapterName(r.luid);
+        if (role == Qt::DisplayRole || role == SortRole || role == Qt::ToolTipRole) return adapterName(r.luid);
         break;
     case Usage:
     case Dedicated:
@@ -253,6 +302,17 @@ QVariant ProcessTableModel::data(const QModelIndex& index, int role) const
         if (role == Qt::ToolTipRole && p.path.isEmpty())
             return tr("The executable path is not readable, so the preference cannot be looked up");
         break;
+    case Profile: {
+        if (role != Qt::DisplayRole && role != SortRole && role != Qt::ToolTipRole && role != Qt::ForegroundRole)
+            break;
+        const profiles::LiveCheck check = profileCheck(p);
+        if (role == Qt::DisplayRole) return check.text;
+        if (role == SortRole) return QStringLiteral("%1 %2").arg(int(check.state)).arg(check.text);
+        if (role == Qt::ToolTipRole) return check.detail;
+        if (check.state == profiles::LiveCheck::State::Matches) return colors().good;
+        if (check.state == profiles::LiveCheck::State::Elsewhere) return colors().warn;
+        return colors().textMuted;
+    }
     default:
         break;
     }
