@@ -193,7 +193,12 @@ RunResult runJobs(const QList<Worker>& workers, const QList<int>& use, const QLi
 QString expandPlaceholders(const QString& text, const Worker& w, const Job& j)
 {
     QString s = text;
-    s.replace(QLatin1StringView("{dxgi_index}"), QString::number(w.dxgiIndex))
+    const qint32 high = qint32(w.luid >> 32);       // LUID.HighPart is signed, LowPart unsigned
+    const quint32 low = quint32(w.luid & 0xFFFFFFFFu);
+    s.replace(QLatin1StringView("{luid_pair}"), QStringLiteral("%1,%2").arg(high).arg(low))
+        .replace(QLatin1StringView("{luid_high}"), QString::number(high))
+        .replace(QLatin1StringView("{luid_low}"), QString::number(low))
+        .replace(QLatin1StringView("{dxgi_index}"), QString::number(w.dxgiIndex))
         .replace(QLatin1StringView("{luid}"), hw::formatLuid(w.luid))
         .replace(QLatin1StringView("{vendor_id}"), QString::number(w.vendorId))
         .replace(QLatin1StringView("{vendor_hex}"), QStringLiteral("0x%1").arg(w.vendorId, 4, 16, QLatin1Char('0')))

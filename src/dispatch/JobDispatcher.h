@@ -82,7 +82,8 @@ bool shouldTakeJob(double myMs, double fastestOtherMs, int remaining);
 
 // ---- executors ------------------------------------------------------------------------------------
 
-// Placeholders: {dxgi_index} {luid} {vendor_id} {vendor_hex} {gpu_name} {input} {output} {stem} {job}
+// Placeholders: {dxgi_index} {luid} {luid_pair} {luid_high} {luid_low} {vendor_id} {vendor_hex} {gpu_name}
+//               {input} {output} {stem} {job}   (the GPU ones mean the same as in profile arguments)
 QString expandPlaceholders(const QString& text, const Worker& w, const Job& j);
 // Splits the template like a command line first, then expands each argument (so paths with spaces
 // stay one argument).

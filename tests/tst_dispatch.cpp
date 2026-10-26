@@ -74,6 +74,7 @@ private Q_SLOTS:
 
         QCOMPARE(expandPlaceholders(QStringLiteral("{dxgi_index}|{luid}|{vendor_id}|{vendor_hex}|{gpu_name}|{stem}|{job}"), kIntel, jobs[1]),
                  QStringLiteral("1|00000000_0000870A|32902|0x8086|Intel(R) HD Graphics|b|1"));
+        QCOMPARE(expandPlaceholders(QStringLiteral("{luid_pair} {luid_high} {luid_low}"), kIntel, jobs[1]), QStringLiteral("0,34570 0 34570"));
         const QStringList cmd = commandLine(QStringLiteral("\"C:\\Program Files\\tool.exe\" --gpu {dxgi_index} -i {input} -o {output}"), kNv, jobs[0]);
         QCOMPARE(cmd, (QStringList{ QStringLiteral("C:\\Program Files\\tool.exe"), QStringLiteral("--gpu"), QStringLiteral("0"), QStringLiteral("-i"),
                                     QStringLiteral("C:\\in\\My Clip.mp4"), QStringLiteral("-o"), QStringLiteral("D:\\out\\My Clip-0.mkv") }));
