@@ -56,6 +56,7 @@ void ProcessTableModel::setProfiles(const QList<profiles::AppProfile>& list, con
     }
     m_profiles = byPath;
     m_gpus = gpus;
+    m_checks.clear();
     if (!m_rows.isEmpty())
         Q_EMIT dataChanged(index(0, Profile), index(int(m_rows.size()) - 1, Profile));
 }
@@ -64,13 +65,17 @@ profiles::LiveCheck ProcessTableModel::profileCheck(const ProcessSample& process
 {
     if (process.path.isEmpty() || m_profiles.isEmpty())
         return {};
-    const auto it = m_profiles.constFind(profiles::normalizedPath(process.path));
-    if (it == m_profiles.cend())
-        return {};
-    QHash<quint64, QString> names;
-    for (auto a = m_adapters.cbegin(); a != m_adapters.cend(); ++a)
-        names.insert(a.key(), a->software ? QStringLiteral("%1 (software renderer)").arg(a->name) : a->name);
-    return profiles::liveCheck(*it, process.adapters, m_gpus, names);
+    if (const auto cached = m_checks.constFind(process.pid); cached != m_checks.cend())
+        return *cached;
+    profiles::LiveCheck check;
+    if (const auto it = m_profiles.constFind(profiles::normalizedPath(process.path)); it != m_profiles.cend()) {
+        QHash<quint64, QString> names;
+        for (auto a = m_adapters.cbegin(); a != m_adapters.cend(); ++a)
+            names.insert(a.key(), a->software ? QStringLiteral("%1 (software renderer)").arg(a->name) : a->name);
+        check = profiles::liveCheck(*it, process.adapters, m_gpus, names);
+    }
+    m_checks.insert(process.pid, check); // also "no profile", so unprofiled processes cost one lookup
+    return check;
 }
 
 GpuPreference ProcessTableModel::preferenceFor(const QString& path) const
@@ -119,6 +124,7 @@ void ProcessTableModel::update(const ProcessSnapshot& snapshot)
     //    signal for every row makes the sort proxy re-sort and the view repaint everything
     //    (measured: ~56 ms of UI time per refresh with ~170 processes).
     const QList<ProcessSample> previous = std::exchange(m_processes, incoming);
+    m_checks.clear(); // new samples: profile checks are recomputed on demand
     QList<Row> added;
     QList<int> changed;
     for (const Row& r : next) {

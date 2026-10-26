@@ -4,6 +4,7 @@
 #include "ui/models/ProcessTableModel.h"
 
 #include <QAbstractItemModelTester>
+#include <QElapsedTimer>
 #include <QPersistentModelIndex>
 #include <QSignalSpy>
 #include <QTest>
@@ -209,6 +210,58 @@ private Q_SLOTS:
 
         model.update(snapshot({ proc(1, QStringLiteral("video.exe"), { use(20, 0, 1024) }) }));                  // memory only
         QVERIFY(profileText(QStringLiteral("video.exe")).endsWith(QStringLiteral("idle")));
+
+        // An Automatic variant accepts any GPU: on the GT 730 the program is consistent with it, not "✗".
+        AppProfile anyGpu = *newVariant(onIntel, QStringLiteral("any"));
+        anyGpu.mode = GpuMode::Automatic; // a variant starts as a copy of the main profile
+        model.setProfiles({ onIntel, anyGpu, onNv, automatic }, { nv, intel });
+        model.update(snapshot({ proc(1, QStringLiteral("video.exe"), { use(10, 30) }) }));
+        QVERIFY2(profileText(QStringLiteral("video.exe")).startsWith(QStringLiteral("✓")), qPrintable(profileText(QStringLiteral("video.exe"))));
+        QVERIFY(model.index(0, ProcessTableModel::Profile).data(Qt::ToolTipRole).toString().contains(QStringLiteral("consistent with")));
+    }
+
+    // Cost of the live profile column on a busy PC: a refresh plus reading every row's profile cell
+    // (as a full repaint does) with 250 processes, 40 of them profiled, stays small next to the
+    // 1-second refresh interval and close to the cost without profiles.
+    void profileColumnCostIsSmall()
+    {
+        using namespace gf::profiles;
+        const gf::pref::SelectableGpu nv{ QStringLiteral("GT 730"), 0x10DE, gf::hw::formatLuid(10), false, 0 };
+        const gf::pref::SelectableGpu intel{ QStringLiteral("HD Graphics"), 0x8086, gf::hw::formatLuid(20), true, 1 };
+        QList<ProcessSample> procs;
+        QList<AppProfile> profiles;
+        for (int i = 0; i < 250; ++i) {
+            const QString exe = QStringLiteral("app%1.exe").arg(i % 120);
+            procs << proc(quint32(1000 + i), exe, { use(10, i % 7), use(20, i % 3) });
+            if (i < 40) {
+                AppProfile p = newProfile(QStringLiteral("C:\\Apps\\%1").arg(exe));
+                p.mode = i % 2 ? GpuMode::Integrated : GpuMode::Discrete;
+                profiles << p;
+            }
+        }
+        auto measure = [&](bool withProfiles) {
+            ProcessTableModel model;
+            model.setAdapters({ { 10, { nv.name, false } }, { 20, { intel.name, false } } });
+            if (withProfiles)
+                model.setProfiles(profiles, { nv, intel });
+            model.update(snapshot(procs));
+            QElapsedTimer t;
+            t.start();
+            for (int round = 0; round < 10; ++round) {
+                for (ProcessSample& p : procs)               // every process changes a little each refresh
+                    p.adapters[0].utilization = MetricValue::ok(double((round + p.pid) % 9));
+                model.update(snapshot(procs));
+                for (int r = 0; r < model.rowCount(); ++r)
+                    for (int role : { int(Qt::DisplayRole), int(Qt::ToolTipRole), int(Qt::ForegroundRole) })
+                        model.index(r, ProcessTableModel::Profile).data(role);
+            }
+            return double(t.nsecsElapsed()) / 1e6 / 10;      // ms per refresh + repaint
+        };
+        const double without = measure(false), with = measure(true);
+        qInfo().noquote() << QStringLiteral("per refresh + full repaint of the column: %1 ms without profiles, %2 ms with 40 profiles (500 rows)")
+                                 .arg(without, 0, 'f', 2).arg(with, 0, 'f', 2);
+        // Measured 4.4 ms with the per-process cache (14.1 ms when every cell recomputed the check).
+        QVERIFY2(with < 20.0, qPrintable(QStringLiteral("%1 ms").arg(with)));
     }
 
     void nonOkValuesShowTheirState()

@@ -58,6 +58,20 @@ LiveCheck liveCheck(const QList<AppProfile>& profiles, const QList<mon::ProcessA
         c.detail = QStringLiteral("Working on %1, as its GPU profile asks.").arg(matching.join(QStringLiteral("; ")));
         return c;
     }
+    // A profile in Automatic mode accepts any GPU. GPU Fusion cannot tell which of the program's profiles
+    // started it, so working elsewhere is consistent with that profile, not a proven mismatch.
+    QStringList automaticProfiles;
+    for (const AppProfile& p : profiles)
+        if (p.mode == GpuMode::Automatic)
+            automaticProfiles << displayName(p);
+    if (!automaticProfiles.isEmpty()) {
+        c.state = LiveCheck::State::Matches;
+        c.text = QStringLiteral("✓ %1").arg(modeSummary);
+        c.detail = QStringLiteral("Working on %1: consistent with %2 (Automatic). If it was started for one of its other profiles (%3), "
+                                  "it is not on that profile's GPU.")
+                       .arg(activeNames.join(QStringLiteral(", ")), automaticProfiles.join(QStringLiteral(", ")), modeSummary);
+        return c;
+    }
     c.state = LiveCheck::State::Elsewhere;
     c.text = QStringLiteral("✗ %1").arg(modeSummary); // where it runs instead: the GPU column, tooltip and details
     c.detail = QStringLiteral("Working on %1, although its GPU profile asks for %2. A profile's GPU option and arguments apply only when "

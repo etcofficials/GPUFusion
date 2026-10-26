@@ -26,7 +26,7 @@ public:
 
     explicit ProcessTableModel(QObject* parent = nullptr);
 
-    void setAdapters(const QHash<quint64, AdapterInfo>& adapters) { m_adapters = adapters; }
+    void setAdapters(const QHash<quint64, AdapterInfo>& adapters) { m_adapters = adapters; m_checks.clear(); }
     void setPreferences(const QHash<QString, mon::GpuPreference>& byPath);
     // GPU profiles by program (main + variants), for the live "GPU profile" check of running processes.
     void setProfiles(const QList<profiles::AppProfile>& profiles, const QList<pref::SelectableGpu>& gpus);
@@ -60,6 +60,9 @@ private:
     QHash<quint64, AdapterInfo> m_adapters;
     QHash<QString, mon::GpuPreference> m_preferences;
     QHash<QString, QList<profiles::AppProfile>> m_profiles; // normalized executable path -> profiles
+    // The check depends only on the process's sample, the profiles and the adapters: computed once per
+    // process after each change instead of for every cell and role on every repaint.
+    mutable QHash<quint32, profiles::LiveCheck> m_checks;
     QList<pref::SelectableGpu> m_gpus;
     mutable QHash<QString, QIcon> m_icons;
 };
