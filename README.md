@@ -9,7 +9,10 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: version 1.6.0.** New in 1.6: **export and import of GPU profiles** for backup or another PC.
+> **Status: version 1.7.0.** New in 1.7: **profile variants**, several GPU profiles for one program
+> (e.g. FFmpeg on the Intel GPU and on the GT 730, verified).
+>
+> New in 1.6: **export and import of GPU profiles** for backup or another PC.
 >
 > New in 1.5: **GPU shortcuts**. *Create shortcut…* makes a Desktop
 > shortcut that always starts a program through its GPU profile (its GPU option, arguments and the
@@ -120,6 +123,7 @@ GPUFusion.exe [--data-dir <path>] [--page <id>] [--smoke-test[=<ms>]] [--screens
 | `--verify-seconds <n>` | With `--verify-app` / `--verify-profile`: how long to watch (default 20) |
 | `--apply-profile <exe> --mode <m>` | Create/update the GPU profile of any program (`automatic`, `integrated`, `discrete`, `both`; `--profile-args` for launch arguments, which may contain GPU placeholders such as `{luid_pair}` / `{dxgi_index}`; `--profile-known-option` adds the program's known GPU option), apply it, exit |
 | `--launch-profile <exe\|id>` | Start the program from its profile (arguments + GPU choice for SDK programs) |
+| `--variant <name>` | With the profile options above and an exe path: use (or create) that variant of the program's profile |
 | `--export-profiles <file>` / `--import-profiles <file>` | Back up all GPU profiles to one file / add them back (`--replace-existing` to replace existing ones); import changes no Windows setting |
 | `--create-shortcut <exe\|id>` | Write a shortcut that starts the program through its profile (Desktop, or `--shortcut-dir <folder>`) |
 | `--interactive` | With `--launch-profile`: show problems and the running-program question in dialogs (used by shortcuts) |

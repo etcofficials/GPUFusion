@@ -127,6 +127,26 @@ the probe with `--adapter 00000000_0000870F`, the Intel GPU's LUID at that boot
 (`tst_running_live`). With the program already running, the dialog waited; dismissing it started
 nothing and closed nothing.
 
+### Variants: several profiles for one program (1.7)
+
+*Add variant…* creates another profile for the same executable, with its own name (e.g. "Intel",
+"video encoding"), mode, launch arguments and shortcut. This is capability class B within one
+program: for example, one FFmpeg job on each GPU, or two browser windows on different GPUs (each
+needs its own `--user-data-dir` to run at the same time).
+
+**Windows stores only one GPU preference per executable**, and it belongs to the program's main
+profile. A variant never writes or removes it:
+- **Integrated / Discrete:** the variant reaches its GPU through the program's own GPU option (GPU
+  placeholder in its arguments, shown as *Expected* until verified) or the SDK. Without either it
+  needs the program's support.
+- **Automatic:** the program chooses by itself; any Windows value from the main profile still applies.
+
+Verified on the reference PC: variants "Intel" (Integrated) and "NVIDIA" (Discrete) of FFmpeg, both
+with FFmpeg's known option. "Intel" was **confirmed on Intel HD Graphics**. "NVIDIA" was **confirmed
+on the GT 730** (video engine up to 98 %). No Windows value existed for FFmpeg before or after.
+Command line: `--apply-profile <exe> --variant <name> --mode …`, and `--variant` with
+`--launch-profile`, `--verify-profile` and `--create-shortcut` when the profile is given as a path.
+
 ### Backup and transfer (1.6)
 
 *Export…* writes every profile to one JSON file. *Import…* adds them back on this PC or another.

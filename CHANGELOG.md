@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.0 — 2026-10-26
+
+- **Profile variants: several GPU profiles for one program.** *Add variant…* in the GPU Manager
+  (`--variant <name>` on the command line) creates another profile for the same program, with its own
+  mode, arguments and shortcut, e.g. "FFmpeg — Intel" and "FFmpeg — NVIDIA".
+  - Windows stores only one GPU preference per program, and it belongs to the main profile. A
+    variant never writes or removes it.
+  - A variant reaches its GPU through the program's own GPU option (placeholders) or the SDK. The
+    GPU Manager shows this for each mode.
+  - Verified on the reference PC: two FFmpeg variants were confirmed decoding on the Intel GPU and
+    on the GT 730 respectively, with no Windows value written for FFmpeg.
+
 ## 1.6.0 — 2026-10-26
 
 - **Profile backup and transfer.** *Export…* / *Import…* in the GPU Manager (and `--export-profiles

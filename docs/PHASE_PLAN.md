@@ -253,6 +253,11 @@
   settings, and drops per-PC results (verification, applied values). Motivated by the failing disk
   that holds the data folder.
 
+## 1.7 — profile variants (2026-10-26)
+
+- Several profiles per executable (class B within one program). Variants never use Windows'
+  single per-executable value. Verified with two FFmpeg variants on the two GPUs.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

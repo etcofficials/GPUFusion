@@ -121,7 +121,16 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | No claims carried to other hardware | ✔ | verification results and applied values dropped on import |
 | Import never changes Windows settings | ✔ | modes take effect only on Apply |
 
+## 1.7 — profile variants
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Different GPUs for the same program (class B within one program) | ✔ (programs with a GPU option / SDK) | two FFmpeg variants confirmed on each GPU (`tst_profiles_live`) |
+| Windows' single per-program value never contradicted | ✔ | variants never write or remove it; `tst_profiles::variantsNeverUseTheWindowsValue`, GUI test |
+
 ## Tests at release
+
+1.7.0: 31 CTest entries, 230 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.6.0: 31 CTest entries, 227 cases, all passing with reference-machine expectations (2026-10-26).
 
