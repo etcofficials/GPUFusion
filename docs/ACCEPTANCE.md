@@ -1,4 +1,4 @@
-# Acceptance checklist (release 1.0.0, 2026-10-16)
+# Acceptance checklist (releases 1.0.0 – 1.2.0)
 
 Verified on the reference PC (Windows 10 Pro 22H2, i5-2400S, 12 GB, GeForce GT 730 + Intel HD
 Graphics 2000). "Evidence" points to the test, measurement or document that shows it.
@@ -66,8 +66,29 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Dual-GPU capability, unsupported apps marked | ✔ | dual-GPU check (PE imports + hardware); not possible on this PC for one workload |
 | No driver, firmware, global-setting or other-program changes | ✔ | only HKCU per-app values for chosen executables |
 
+## 1.2 — generic GPU manager
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Works for any executable; no per-application implementation | ✔ | profiles keyed by executable path; discovery from Start menu / installed programs / running processes; no application names in `src/profiles`, `src/dispatch` |
+| Persistent per-app profiles (mode, arguments, applied value, last verification) | ✔ | `tst_profiles` (JSON, store isolation, ids), GPU Manager page |
+| Intel / NVIDIA / Automatic / Both per profile | ✔ | `tst_gpumanager_ui`, `tst_profiles_live` |
+| Strongest justified generic mechanism; never write a value that would not work | ✔ | Discrete: Windows value written + read back; Intel: no value on this PC (Windows cannot place programs there), value removed; `tst_profiles::applyWritesOnlyJustifiedValues` |
+| Capability per mode, classes A–E, with reasons | ✔ | `assessMode`; page shows status/class/mechanism/reasons; `tst_profiles::referencePcCapabilities` |
+| Verification of actual GPU use per mode | ✔ | `tst_profiles_live`: Integrated → work only on Intel (SDK program), Discrete → GT 730, Both → both GPUs, Automatic → observed |
+| Intel selection for arbitrary programs | ✘ (Windows limitation, unchanged) | only programs with their own GPU setting, SDK programs or adapter-option jobs; documented, never promised |
+| Reusable multi-GPU architecture (independent workloads) | ✔ | `src/dispatch`: any command template or built-in decoding, shared queue, straggler rule; `tst_dispatch`, `tst_dispatch_live`, `tst_jobpanel_ui` |
+| No speed-up claimed from utilisation alone | ✔ | Both verdict says so explicitly; dispatcher compares with a concurrency control, checks outputs, uses the significance rule; measured gains ≤ ~15 % and not stable, reported as such (MULTI_GPU_RESEARCH.md) |
+| Optional developer SDK | ✔ | `sdk/include/gpufusion/gpufusion.h`, docs/SDK.md, `tst_sdk`; shipped in the ZIP/installer under `sdk\` |
+| One rendering workload split across GPUs (class E) | ✘ (not possible here) | Intel has no D3D12; no cross-vendor sharing; stated in every Both assessment |
+| No injection, patching, driver/BIOS/global changes | ✔ | only HKCU per-app values for chosen executables, after confirmation |
+| Existing features preserved | ✔ | GPU Preferences page, NVIDIA selection, detection, monitoring, benchmarks, Lab unchanged; their tests pass |
+
 ## Tests at release
 
-21 CTest entries (20 suites + registry restore fixture), 156 cases, all passing in the release build
+1.2.0: 30 CTest entries (29 suites + registry restore fixture), 212 cases, all passing in the release
+build with reference-machine expectations (2026-10-26).
+
+1.0.0: 21 CTest entries (20 suites + registry restore fixture), 156 cases, all passing in the release build
 with reference-machine expectations; unit tests also in the debug build; all 8 pages pass a
 start/close smoke test.

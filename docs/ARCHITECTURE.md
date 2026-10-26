@@ -230,6 +230,36 @@ ui::evaluateForApp                               stored value → requested adap
 GPUFusionProbe --render <s> [--adapter <LUID>]   stand-in application for live tests
 ```
 
+## Generic GPU manager (1.2)
+
+```
+profiles/AppProfile        pure: AppProfile (any executable; id = basename + SHA-1 of the normalised path),
+                           JSON (schemaVersion 1), GpuMode, assessMode → ModeCapability {status, class A–E,
+                           mechanism, reasons, Windows value to write (only if justified)}, requestedAdapterLuids
+profiles/ProfileStore      one JSON file per program (QSaveFile, atomic); resolveCurrentExecutable follows
+                           versioned install folders (app-1.0.9265\) to the newest copy
+profiles/AppDiscovery      read-only: Start-menu .lnk targets (IShellLinkW, no Resolve), uninstall registry
+                           DisplayIcon, running processes; installers/updaters filtered out
+profiles/ProfileActions    capabilityInputs (GPUs, probe verification, dual-GPU assessment from imports),
+                           applyProfile (journalled PreferenceManager, read back; unjustified → value removed),
+                           launchEnvironment (GPUFUSION_MODE/ADAPTERS/PROFILE), launchProfile,
+                           verifyProfile → observeUsage (+args, +env) → evaluateProfileEvidence (per mode)
+   ├─ ui/pages/GpuManagerPage   list, discovery picker, per-mode status, apply/launch/verify (worker thread)
+   └─ --apply-profile <exe> --mode <m> [--profile-args], --launch-profile, --verify-profile
+sdk/include/gpufusion/gpufusion.h   header-only SDK: mode(), requestedLuids(), adapters(factory), split()
+dispatch/JobDispatcher     class C: workersFrom(detection), jobsFor(inputs, outDir, pattern), runJobs (shared
+                           queue, one thread per worker slot, straggler rule), commandExecutor (template
+                           placeholders + GPUFUSION_* per job, output SHA-1), decodeExecutor (MF on the
+                           job's GPU), compareConfigurations (each GPU, fastest GPU with equal concurrency,
+                           all GPUs) + analyze (failures, output identity per GPU, compareStats)
+   ├─ ui/widgets/JobBatchPanel  on the Workload Lab page (worker thread, cancel)
+   └─ --dispatch <template|decode> --dispatch-inputs/-output/-pattern/-gpus/-compare
+```
+
+Library graph: `gpufusion_profiles` → monitoring + preferences; `gpufusion_dispatch` → benchmarks
+(→ workloads, monitoring); `gpufusion_ui` links both. Nothing in these modules names a specific
+application.
+
 ## Threading
 
 - UI thread: widgets, `AppContext`, `HardwareService` state.
@@ -246,6 +276,10 @@ GPUFusionProbe --render <s> [--adapter <LUID>]   stand-in application for live t
   short-lived `std::thread` per worker per run (each GPU's device is used by one thread at a time);
   the decode experiment uses one thread per stream, each with its own COM (MTA) initialisation.
   Media Foundation is started once per process.
+- GPU Manager verification: a `QThread` per verification; the profile is copied in, and the result
+  is merged into the latest saved profile on the UI thread. Job dispatcher: the panel's `QThread`
+  runs the batch; `runJobs` starts one `std::thread` per worker slot and joins them; the queue,
+  results and timings are guarded by one mutex; built-in decode jobs initialise COM per thread.
 - Logging is mutex-protected and safe from any thread.
 
 ## Build and deployment

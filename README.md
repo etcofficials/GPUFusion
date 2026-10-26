@@ -1,14 +1,24 @@
 # GPU Fusion
 
 A native Windows desktop application for seeing and managing the graphics adapters in a PC:
-which GPUs are present and usable, how busy they are and with what, which GPU an application
-prefers, and — experimentally — whether two dissimilar GPUs can usefully share real work.
+which GPUs are present and usable, how busy they are and with what, **which GPU each program should
+use** (a GPU profile for any executable, with verification of what it really uses), and —
+measured, never assumed — whether two dissimilar GPUs can usefully share real work.
 
 GPU Fusion reports only what the hardware and drivers actually expose. Metrics that cannot be
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: version 1.1.0.** Live monitoring of every physical GPU (including
+> **Status: version 1.2.0 — generic GPU manager.** The **GPU Manager** page keeps a GPU profile for
+> any program (picked from installed/running programs or browsed to): Automatic, Integrated GPU,
+> Discrete GPU or Both GPUs. For each mode it shows what that mode can do for this program on this PC,
+> applies the strongest mechanism that is justified, and verifies on the real GPUs which GPU(s) the
+> program used. An optional header-only [SDK](docs/SDK.md) lets programs follow the choice, including
+> where Windows cannot. A generic **job dispatcher** runs batches of independent jobs (any command
+> line with GPU placeholders) across the GPUs and measures whether that beats the best single GPU.
+> No application-specific code, injection or patching.
+>
+> Since 1.1.0: live monitoring of every physical GPU (including
 > WDDM 1.x GPUs Task Manager cannot show), per-application GPU usage, adapter details, **per-application
 > GPU selection by adapter** (Intel / NVIDIA / automatic) that writes Windows' per-app preference only
 > where it is shown to work and **verifies where a program really renders** (see
@@ -39,7 +49,7 @@ From the [Releases](https://github.com/etcofficials/GPUFusion/releases) page:
 
 GPU Fusion installs no services or drivers, needs no internet connection and changes no system
 settings by itself. The only setting it can change is a program's Windows GPU preference, and only
-when you apply one on the GPU Preferences page (journalled, undoable).
+when you apply one on the GPU Manager or GPU Preferences page (confirmed, journalled, undoable).
 
 ## Building from source
 
@@ -81,7 +91,7 @@ GPUFusion.exe [--data-dir <path>] [--page <id>] [--smoke-test[=<ms>]] [--screens
 | Option | Purpose |
 |---|---|
 | `--data-dir` | Store settings, logs and benchmarks in `<path>` |
-| `--page` | Open on `dashboard`, `gpus`, `applications`, `preferences`, `workloads`, `benchmarks`, `diagnostics` or `settings` |
+| `--page` | Open on `dashboard`, `gpus`, `applications`, `manager`, `preferences`, `workloads`, `benchmarks`, `diagnostics` or `settings` |
 | `--smoke-test` | Start, show the window, exit with code 0 (automated launch check) |
 | `--screenshot` | Save a PNG of the window and exit (waits for adapter detection) |
 | `--screenshot-full` | With `--screenshot`: capture the page's whole scrollable content |
@@ -92,7 +102,18 @@ GPUFusion.exe [--data-dir <path>] [--page <id>] [--smoke-test[=<ms>]] [--screens
 | `--run-lab <name>` | Run Workload Lab experiment `split`, `decode` or `all`, save the session(s), print the verdicts to the log, exit (0 = every mode completed with correct output) |
 | `--lab-size <preset>` | With `--run-lab`: hash workload size for the split experiment (default `standard`) |
 | `--verify-app <exe>` | Start the program (arguments after `--`), watch which GPU its processes render on, log the staged result, exit (0 = confirmed / observed) |
-| `--verify-seconds <n>` | With `--verify-app`: how long to watch (default 20) |
+| `--verify-seconds <n>` | With `--verify-app` / `--verify-profile`: how long to watch (default 20) |
+| `--apply-profile <exe> --mode <m>` | Create/update the GPU profile of any program (`automatic`, `integrated`, `discrete`, `both`; `--profile-args` for launch arguments), apply it, exit |
+| `--launch-profile <exe\|id>` | Start the program from its profile (arguments + GPU choice for SDK programs) |
+| `--verify-profile <exe\|id>` | Start it from its profile, verify which GPU(s) it used, store the result (0 = mode confirmed) |
+| `--dispatch <template\|decode>` | Run one job per input over the GPUs; `--dispatch-inputs <folder\|a;b>`, `--dispatch-output`, `--dispatch-pattern {stem}.ext`, `--dispatch-gpus all\|integrated\|discrete\|0,1`, `--dispatch-compare <n>` (measured comparison) |
+
+Example (FFmpeg hardware decoding, one file per GPU job):
+
+```
+GPUFusion.exe --dispatch "ffmpeg -y -init_hw_device d3d11va=g:{dxgi_index} -hwaccel d3d11va -hwaccel_device g -i {input} -f framemd5 {output}" ^
+              --dispatch-inputs D:\clips --dispatch-output D:\out --dispatch-pattern {stem}.md5 --dispatch-compare 3
+```
 
 ## Where data is stored
 
@@ -102,7 +123,8 @@ GPUFusion.exe [--data-dir <path>] [--page <id>] [--smoke-test[=<ms>]] [--screens
 | Portable release | `data\` next to `GPUFusion.exe` |
 | Location not writable | per-user `%LOCALAPPDATA%\GPUFusion` (reported in the status bar and Diagnostics) |
 
-Inside it: `config\settings.json` (versioned), `logs\gpufusion.log` (rotated, size-capped),
+Inside it: `config\settings.json` (versioned), `config\profiles\<id>.json` (one GPU profile per
+program), `logs\gpufusion.log` (rotated, size-capped),
 `benchmarks\`, `reports\`, and `temp\` (GPU Fusion's own TEMP, so graphics-driver shader caches
 stay off the system drive). Nothing is written to the registry, and GPU Fusion installs no
 services or startup entries.
@@ -116,7 +138,7 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
 
 - [Architecture](docs/ARCHITECTURE.md) · [Phase plan](docs/PHASE_PLAN.md) · [Testing](docs/TESTING.md)
 - [Compatibility](docs/COMPATIBILITY.md) · [Storage policy](docs/STORAGE_POLICY.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [GPU selection](docs/GPU_SELECTION.md) · [Multi-GPU research](docs/MULTI_GPU_RESEARCH.md)
+- [GPU selection and the GPU Manager](docs/GPU_SELECTION.md) · [SDK](docs/SDK.md) · [Multi-GPU research](docs/MULTI_GPU_RESEARCH.md)
 
 ## Known limitations (current)
 
@@ -130,9 +152,13 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
 - Monitoring cost on an i5-2400S: about 0.15 % of the CPU at the default 1-second interval.
 - On the reference PC Windows cannot move programs to the Intel GPU: it ranks the GT 730 (boot device,
   drives the only display; the Intel driver is WDDM 1.2) first for every preference. Verified with real
-  rendering — a program set to "Power saving" still renders on the GT 730. GPU Fusion therefore offers
-  the Intel choice only as "cannot be enforced"; programs with their own GPU setting can still use it.
-- No setting can make an existing program use both GPUs; see the dual-GPU check and the Workload Lab.
+  rendering — a program set to "Power saving" still renders on the GT 730. GPU Fusion therefore marks
+  the Intel mode "only with the program's support": programs with their own GPU setting, SDK programs
+  launched from their profile, and dispatcher jobs with an adapter option can use it.
+- No setting can make an existing program use both GPUs; "Both GPUs" works only for programs that
+  divide their own work (SDK). Both GPUs showing activity does not mean the program got faster.
+- The job dispatcher measured at most about 10–15 % gain for decode batches here (not stable between
+  sessions); a second, much slower GPU can also make a batch slower. It reports what it measures.
 - The Workload Lab's gains apply to GPU Fusion's own test workloads. GPU Fusion does not (and cannot,
   without patching other programs) make games or other applications use both GPUs.
 - Benchmark results are for this machine's state at the time (other programs, temperature and

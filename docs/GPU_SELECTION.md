@@ -3,7 +3,39 @@
 **Status:** adapter-oriented choices (Automatic / integrated GPU / discrete GPU / Both), mapped onto
 Windows' per-app preference only where verification justifies it, plus **verification of where a
 program really renders** (launch → observe its process tree → 3D/compute engine activity per GPU).
-Measured on the reference PC 2026-10-20.
+Measured on the reference PC 2026-10-20. Version 1.2 adds the **GPU Manager**: saved per-program
+profiles for any executable (below).
+
+## GPU Manager: a profile for any program (1.2)
+
+The GPU Manager page (and `--apply-profile` / `--launch-profile` / `--verify-profile`) keeps one
+profile per executable in `data\config\profiles\<id>.json`. There is no built-in program list and no
+per-program code. Programs are added from the Start menu, the installed-programs list, running
+processes or by browsing. Self-updating programs that install each version in its own folder
+(`app-1.0.9265\`) are followed to their newest version.
+
+Each profile has a mode, optional launch arguments, the value applied and the last verification. For
+every mode the page shows what it can do **for this program on this PC**:
+
+| Mode | Class | Mechanism (strongest generic one that is justified) | Reference PC |
+|---|---|---|---|
+| Automatic | A | remove the program's Windows preference | Verified |
+| Integrated GPU | A | Windows preference *only if verified to work*; otherwise no value, and the GPU is passed to the program when GPU Fusion launches it (SDK) | **Only with the program's support**: Windows cannot place programs on the Intel GPU here. An SDK program was verified on Intel. |
+| Discrete GPU | A | Windows preference `GpuPreference=2;` | Verified |
+| Both GPUs | D | no Windows value; both GPUs passed to the program (SDK) | Only with the program's support. The SDK probe was verified using both. |
+
+Class E (one rendering workload split across GPUs) is listed with its reason in the Both reasons and
+is impossible here. Class B (different GPUs for different programs) is simply one profile per
+program. Class C (independent jobs on several GPUs) is the dispatcher on the Workload Lab page. A
+successful verification of the program itself overrides the generic status ("Verified for this
+program"). Applying never writes a value that would not do what the mode says: an unjustified
+mode *removes* any stored value, so the value cannot push the program the other way.
+
+Verification of a profile launches the program with its arguments and the SDK variables, observes
+its process tree as described below, and evaluates it against the mode. For Both, work on both GPUs
+counts, including work of unknown type on the Intel GPU, whose driver does not name engines. That is
+reported as "Both GPUs used" with the explicit note that it does not show a speed-up. See
+[SDK.md](SDK.md) for the variables and the verified results.
 
 ## Diagnosis: why "use the Intel GPU" did nothing
 
@@ -82,6 +114,9 @@ themselves (in their own settings) can use the Intel GPU, and GPU Fusion verifie
 
 - The program offers its own GPU/adapter setting (many games, editors, encoders do). Set it there,
   then use *Verify on this PC*.
+- The program integrates the GPU Fusion SDK and is launched from its profile (verified with the probe).
+- For batch work: the program accepts an adapter option on its command line. The dispatcher's command
+  template fills in `{dxgi_index}` / `{luid}` per job (verified with FFmpeg `-init_hw_device d3d11va=g:{dxgi_index}`).
 - **Untested hypothesis, needs your decision:** connecting the monitor to the motherboard's video
   output and making the integrated GPU the boot/primary display in the BIOS/UEFI would likely make
   default programs use the Intel GPU — at the cost of the GT 730 for them, and with the HD 2000's

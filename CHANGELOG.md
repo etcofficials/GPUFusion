@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.0 — 2026-10-25
+
+GPU Fusion becomes a generic GPU manager: a GPU profile for any program, the strongest justified
+mechanism per mode, verification of real use, an optional SDK and a generic multi-GPU job dispatcher.
+Nothing in it is specific to one application.
+
+- **GPU Manager page** (`--page manager`): one saved profile per executable, added from the programs
+  installed or running on this PC (Start menu, installed programs, running processes) or by browsing.
+  Self-updating programs in versioned folders are followed to their newest version.
+- **Modes per profile** — Automatic, Integrated GPU, Discrete GPU, Both GPUs — each with its status
+  for this program on this PC (verified / expected / only with the program's support / not possible),
+  capability class (A–E), mechanism and reasons. Apply asks before any Windows value changes. Values
+  are written only where they do what the mode says; otherwise any stored value is removed. Launch
+  arguments are kept per profile.
+- **Launch and Verify on this PC** from the profile: the program is started with its arguments and
+  the GPU choice (`GPUFUSION_MODE`, `GPUFUSION_ADAPTERS`, `GPUFUSION_PROFILE`), observed, and judged
+  against its mode. For Both, work on both GPUs counts (including the Intel GPU's unnamed engines),
+  with an explicit note that it does not show a speed-up. Results are stored in the profile.
+- **SDK** (`sdk/include/gpufusion/gpufusion.h`, header-only, see docs/SDK.md): lets a program use the
+  GPU(s) chosen in its profile, even the Intel GPU where Windows cannot place programs. Verified with
+  GPUFusionProbe in every mode.
+- **Job dispatcher** (Workload Lab page, `--dispatch`): independent jobs, one per input file, spread
+  over the GPUs through a shared queue. Jobs can be any command template (`{dxgi_index}`, `{luid}`,
+  `{input}`, `{output}`, …) or built-in H.264 decoding. *Compare* measures each GPU alone, the fastest
+  GPU running the same number of jobs at once (control), and all GPUs. It checks that outputs match,
+  and reports faster/slower only when the difference is significant. Slower GPUs stay off the last jobs.
+  On the reference PC, gains for decode batches are at most about 10–15 % and vary between sessions
+  (docs/MULTI_GPU_RESEARCH.md).
+- CLI: `--apply-profile <exe> --mode <m> [--profile-args]`, `--launch-profile`, `--verify-profile`,
+  `--dispatch <template|decode>` with `--dispatch-inputs/-output/-pattern/-gpus/-compare`.
+- GPUFusionProbe follows `GPUFUSION_ADAPTERS` (SDK) and renders on every requested GPU in Both mode.
+- The GPU Preferences page, NVIDIA selection, detection, monitoring, benchmarks and the Lab are unchanged.
+
 ## 1.1.0 — 2026-10-20
 
 Per-application GPU selection that says what it can and cannot do — and checks it.

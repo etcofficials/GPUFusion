@@ -28,6 +28,44 @@ work at the same time, and does that make any task faster than the GT 730 alone?
 - **Adding the CPU did not help** the compute split (1.33–1.35× slower than the GT 730 alone): a CPU
   thread needs ~70 ms for a 32-row item, so the CPU's last item finishes long after the GPUs.
 
+## Generic job dispatcher: batches of independent jobs (1.2, 2026-10-25)
+
+The Workload Lab results above are for GPU Fusion's own workloads. Version 1.2 adds a **generic**
+dispatcher (capability class C, `src/dispatch/`): a batch of independent jobs, one per input file, run
+on the chosen GPUs through a shared queue. A job is any command whose program accepts a GPU on its
+command line (template placeholders `{dxgi_index}` `{luid}` `{vendor_id}` `{vendor_hex}` `{gpu_name}`
+`{input}` `{output}` `{stem}` `{job}`; `GPUFUSION_ADAPTERS` is set per job for SDK programs), or the
+built-in Media Foundation H.264 decoder. Available on the Workload Lab page ("Your own jobs on several
+GPUs") and as `--dispatch`.
+
+**How a comparison is judged** (`--dispatch-compare n`, or "Compare runs" in the panel):
+
+- n runs of the batch on each GPU alone, then on **the fastest GPU alone running as many jobs at once
+  as the multi-GPU run does** (control), then on all chosen GPUs.
+- The control matters. In the first FFmpeg measurement, all GPUs looked 1.55× faster than the best
+  GPU running one job at a time. Against the control the gain was 1.14×. Most of the apparent gain
+  came from running two processes at once (CPU work, I/O), not from the second GPU.
+- Every job must succeed, and each job's output in the multi-GPU run must be identical to the same
+  job's output on the same GPU alone (file SHA-1, or the frame count for built-in decoding).
+- "Faster" / "Slower" only with the benchmark significance rule (≥ 2 runs each).
+- Stragglers are avoided: a GPU does not take another job when a faster GPU would finish all remaining
+  jobs before it finished that one (times measured on each GPU alone, then in the run itself).
+
+**Measured on the reference PC** (6 copies of the 720p test clip, 3 runs per configuration; two
+sessions on the same day):
+
+| Job | GT 730 alone | HD 2000 alone | HD 2000, 2 at a time (control) | Both GPUs | Verdict |
+|---|---|---|---|---|---|
+| FFmpeg d3d11va decode → framemd5 | 11.5–12.0 s | 9.5–10.9 s | 6.6–6.7 s | 5.9 s / 6.6 s | 1.14× faster / no significant difference |
+| Built-in MF decode | 10.3–10.4 s | 2.4 s | 2.3 s | 2.6 s / 2.1 s | no significant difference / 1.10× faster |
+
+FFmpeg's frame hashes were identical on both GPUs. **Conclusion:** for these decode batches the
+second GPU adds at most about 10–15 %, and the result is not stable from one session to the next. On
+this PC the HD 2000 is the faster decoder and the GT 730 mainly helps with the last few jobs. With 4
+short clips, both GPUs were measurably *slower* than the HD 2000 running two jobs at once
+(`tst_jobpanel_ui`). The dispatcher is a measurement tool that reports these results as they
+are. It does not promise a speed-up.
+
 ## Constraints established (Phase 0)
 
 | Approach | Result | Reason |
@@ -76,7 +114,8 @@ that is part of that mode's real cost and is reported as such.
 
 - Splitting a *single* video stream between GPUs (by GOP): decoding is sequential within a stream;
   with the HD 2000 4.5× faster than the GT 730 at decoding, the expected gain is small.
-- A smarter dynamic scheduler (e.g. guided/decreasing item sizes, or keeping slow workers off the last
-  items). The static split by measured speed already reaches 95–100 % of the ideal.
+- A smarter dynamic scheduler for the Lab's compute split (e.g. guided/decreasing item sizes). The
+  static split by measured speed already reaches 95–100 % of the ideal. (The 1.2 job dispatcher does
+  keep slow workers off the last jobs.)
 - Hardware video *encoding* (not available on either GPU), graphics rendering split (AFR/SFR) — no
   shared surfaces between these GPUs, so every frame would cross system memory.

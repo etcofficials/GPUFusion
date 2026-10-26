@@ -26,6 +26,13 @@ Tests are Qt Test executables in `build\<preset>\bin`. CTest runs them with `TEM
 | `tst_preferences_ui` (labels `hardware`, `registry`) | 2 | drives the real page: Advanced → Power saving, Apply (confirmed) → registry `GpuPreference=1;` **read back**; Cancel changes nothing; Undo ×2 → not set; **adapter choices follow the verification**: with "every preference → discrete GPU", Integrated is marked "cannot enforce" and Apply stays disabled, Both writes nothing and shows the dual-GPU check, Discrete is "Verified" and writes/reads back `GpuPreference=2;` |
 | `tst_gpuselection` | 20 | choice planning: reference PC (Intel not enforceable and **not written**, NVIDIA verified), hybrid laptop (both verified), no verification (nothing written), ranking-only evidence (expected vs not enforceable), Automatic removes the value, Both never writes, ambiguous/missing targets, **verification from before a reboot (new LUIDs) still applies**; usage evaluation: engine classification, confirmed, wrong adapter, unnamed engines (qualified confirmation), **video/copy/other processes are not rendering**, one-pass blips ignored, both adapters + **launcher resolution**, not launched / already running (**relaunch requirement**) / not saved / Automatic; dual-GPU assessment on the reference PC and where hardware allows it; API detection from imports |
 | `tst_appverify_live` (labels `hardware`, `registry`) | 5 | real rendering by GPUFusionProbe observed per process: default device **confirmed on GT 730**; probe choosing the Intel GPU itself → work seen on Intel; **probe with `GpuPreference=1;` (power saving) still renders on GT 730 → "Not applied"** (probe's value restored); launcher (`cmd.exe` → probe) traced to the rendering child; PE imports of real executables, invalid paths rejected |
+| `tst_profiles` | 12 | profile ids stable and case/separator-insensitive; JSON round trip (incl. verification); **ids derived, never trusted from the file**; newer schema refused; **saving one profile never rewrites another's file**; list/find/remove; **versioned install folders resolve to the newest copy that contains the exe**; reference-PC capabilities (Automatic verified, **Intel "only with the program's support" and nothing written**, Discrete verified + HighPerformance, Both class D with the class-E reason); program's own verification overrides the status; SDK launch environment; argument splitting; **per-mode verdicts** (Both needs both GPUs; Intel unnamed work counts); discovery helpers; **apply writes only justified values, keeps other keys and other programs' values** |
+| `tst_profiles_live` (labels `hardware`, `registry`) | 5 | probe as an SDK program, each mode applied and verified on the real GPUs: **Integrated → work only on Intel with no Windows value**, **Discrete → `GpuPreference=2;` + rendered on GT 730**, **Both → both GPUs used**, Automatic → observed, value removed; discovery returns existing, non-installer programs (65 here) |
+| `tst_gpumanager_ui` (labels `hardware`, `registry`) | 1 | drives the GPU Manager page: add program, Integrated (status, nothing written, verification on a worker thread → confirmed, listed as verified), Discrete (confirmation → value written and read back), declined confirmation changes nothing, Automatic removes the value |
+| `tst_sdk` | 3 | SDK: mode and LUIDs from the environment (empty items, unknown mode); **adapters resolved against the real DXGI factory, case-insensitive, default when none match**; weighted split covers every item once |
+| `tst_dispatch` | 10 | GPU selection specs; jobs, output names and **all placeholders**; **command split before expansion (paths with spaces stay one argument)**; **dynamic queue gives the faster worker more jobs**; **straggler rule** keeps a much slower GPU off the last jobs, never blocks two slots of one GPU; cancellation; **command executor with any program** (cmd.exe): output SHA-1, exit codes, **GPUFUSION_ADAPTERS per job**; comparison analysis: significant gain only against the concurrency control, **inconsistent outputs and failed jobs → not comparable**, single runs → no significance claim |
+| `tst_dispatch_live` (label `hardware`) | 1 | built-in decode jobs on each real GPU (hardware decoding, same frame count) and on all GPUs |
+| `tst_jobpanel_ui` (label `hardware`) | 1 | drives the Workload Lab's job panel: a run once, then a comparison including the concurrency control (here honestly **"Slower"** for 4 short clips) |
 | `tst_diagnostics` | 11 | reference-PC issues (legacy WDDM warning with action, sensors notes, no WARP noise, severity order); no-GPU / detection errors; NVML disabled vs missing → right fix; preference verdicts; storage/settings warnings; **multi-GPU assessment** (D3D11 split feasible; compute, D3D12, memory sharing, OpenCL, SLI not feasible — naming the adapter that blocks it; common codecs); single GPU; **metric matrix never invents values**; Markdown/JSON structure; log parsing (continuations, max lines); **redaction removes profile path / computer name / COMPUTER\user but keeps ordinary words containing the user name ("device", "dev.") and other paths** (fictional identifiers) |
 | `tst_export_live` (label `hardware`) | 1 | runs `GPUFusion.exe --export-diagnostics` headless; Markdown + JSON written with live metrics; **no COMPUTERNAME or USERPROFILE in either file**; reference PC content |
 | `tst_benchmarkmodel` | 11 | statistics (sample SD, median, CV); summary marks a result wrong if any run was; **comparable keys separate different sizes, drivers and test versions**; **baseline = newest earlier valid comparable result, never a later one**; **significance rule** (faster/slower only beyond 2 SE and 1 %; noise → no change); **cross-target summary compares only identical verified work**; CSV quoting and column count; JSON round trip keeps Unsupported states; retention; **hash kernel pinned to values computed independently** (arbitrary-precision arithmetic); threading/bands do not change the result |
@@ -40,6 +47,14 @@ with `-L hardware`. Set `GPUFUSION_EXPECT_REFERENCE_MACHINE=1` on the developmen
 its known adapters (GT 730 FL 11_0 + D3D12; HD 2000 FL 10_1, no compute, no D3D12, WDDM 1.2).
 
 ### Latest result
+
+2026-10-26, release build 1.2.0: **29 suites (30 CTest entries incl. the registry cleanup fixture),
+212/212 cases passed**, reference-machine expectations enabled, 0 skipped. The probe's registry value
+was unset afterwards. Fixed on the way: `tst_lab_live` required a "busiest engines" note even for the
+CPU-only modes. Whether a GPU engine passes 1 % during those depends on unrelated desktop activity, so
+the test failed whenever the desktop was idle. CPU-only modes now accept "no engine busier than 1 %".
+An earlier intermittent failure of this suite had a different symptom (no output at all after about
+17 s). This finding does not explain it, and that failure remains unexplained.
 
 2026-10-16, release build: **20/20 suites (21 CTest entries incl. the registry cleanup fixture),
 156/156 cases passed**, reference-machine expectations enabled, 0 skipped. Two headless
@@ -60,8 +75,8 @@ rebuilt object is printed with the dependency that made it stale.
 
 ### Tests that touch the registry
 
-`tst_preferences_live` and `tst_preferences_ui` write the per-user GPU preference **only for this
-build's GPUFusionProbe.exe**. Before changing it they save its original value to
+`tst_preferences_live`, `tst_preferences_ui`, `tst_appverify_live`, `tst_profiles_live` and
+`tst_gpumanager_ui` write the per-user GPU preference **only for this build's GPUFusionProbe.exe**. Before changing it they save its original value to
 `%TEMP%\gpufusion-preferences-live-snapshot.json`; the CTest cleanup fixture
 `tst_preferences_live_restore` puts it back even if a test crashes. Every run on the reference PC
 compared the whole `UserGpuPreferences` key before and after: identical. Exclude them with

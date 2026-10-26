@@ -97,6 +97,10 @@ Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $portable 'LICENSE.txt')  # GPU
 # Qt is used under the LGPLv3: ship the notices and the license texts with the DLLs.
 Copy-Item (Join-Path $repo 'third_party\THIRD-PARTY-NOTICES.txt') $portable
 Copy-Item (Join-Path $repo 'third_party\licenses') (Join-Path $portable 'licenses') -Recurse
+# Optional SDK for programs that want to follow GPU Fusion's GPU choice (header-only, MIT).
+New-Item -ItemType Directory -Force (Join-Path $portable 'sdk') | Out-Null
+Copy-Item (Join-Path $repo 'sdk\include') (Join-Path $portable 'sdk\include') -Recurse
+Copy-Item (Join-Path $repo 'docs\SDK.md') (Join-Path $portable 'sdk\SDK.md')
 @"
 GPU Fusion $version
 

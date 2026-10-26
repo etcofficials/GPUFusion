@@ -171,7 +171,13 @@ private Q_SLOTS:
                 QVERIFY2(r.correct.value_or(false), qPrintable(r.name));
                 QCOMPARE(r.duration.n, 2);
                 QVERIFY(r.warmupRuns >= 1); // at least one second of warm-up even with 0 configured
-                QVERIFY(std::any_of(r.notes.begin(), r.notes.end(), [](const QString& n) { return n.contains(QStringLiteral("busiest engines")); }));
+                // Engine evidence is recorded for every mode. A CPU-only mode may legitimately leave every GPU
+                // engine below 1 % (whether it does depends on unrelated desktop activity), so either form counts there.
+                const bool cpuOnly = r.name.contains(QStringLiteral("Software (CPU)")) || r.name.startsWith(QStringLiteral("CPU"));
+                QVERIFY2(std::any_of(r.notes.begin(), r.notes.end(), [cpuOnly](const QString& n) {
+                             return n.contains(QStringLiteral("busiest engines")) || (cpuOnly && n.contains(QStringLiteral("no engine busier")));
+                         }),
+                         qPrintable(r.name + QStringLiteral(": ") + r.notes.join(QStringLiteral(" | "))));
             }
             QCOMPARE(lastDone, lastTotal); // progress reaches the end
             const bench::LabAnalysis a = split ? bench::analyzeSplit(s) : bench::analyzeDecode(s);

@@ -103,6 +103,7 @@ Section "Uninstall"
   RMDir /r "$INSTDIR\styles"
   RMDir /r "$INSTDIR\imageformats"
   RMDir /r "$INSTDIR\licenses"
+  RMDir /r "$INSTDIR\sdk"
   ; Only shortcuts this installer created (recorded in install.ini) — never one the user made.
   ReadINIStr $0 "$INSTDIR\install.ini" "Shortcuts" "StartMenu"
   ${If} $0 == "1"
