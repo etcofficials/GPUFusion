@@ -190,8 +190,8 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
                           .arg(target);
         c.summary = QStringLiteral("%1 this profile passes the GPU to the program through its own option. Use \"Verify on this PC\" to "
                                    "confirm that the program honours it.").arg(lead);
-        c.reasons << QStringLiteral("Applies only when the program is started from GPU Fusion (Launch / Verify / --launch-profile); "
-                                    "started any other way, it uses its default GPU.");
+        c.reasons << QStringLiteral("Applies only when the program is started through GPU Fusion (Launch, Verify, a shortcut made with "
+                                    "\"Create shortcut…\", or --launch-profile); started any other way, it uses its default GPU.");
     };
     switch (plan.enforcement) {
     case Enforcement::Verified:

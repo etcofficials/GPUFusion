@@ -226,6 +226,13 @@
 - Checked: VLC has no command-line adapter option. Discord was not tested because it was in use.
 - Tests: `tst_running_live` (probe only, serial), GUI close-then-verify, detection unit tests.
 
+## 1.5 — GPU shortcuts (2026-10-26)
+
+- Per-profile shortcuts (`GPUFusion.exe --launch-profile <id> --interactive`) so the profile's GPU
+  option applies when the program is started the everyday way; GUI button + `--create-shortcut`.
+- Headless exit codes fixed (early exits now reported correctly).
+- Verified with the probe through the Windows shell; interactive running-program dialog exercised.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

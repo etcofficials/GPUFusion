@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0 — 2026-10-26
+
+- **GPU shortcuts:** *Create shortcut…* in the GPU Manager (and `--create-shortcut <exe|id>
+  [--shortcut-dir]`) writes a shortcut that starts the program through its profile, without opening
+  GPU Fusion's window. It applies the profile's GPU option and arguments (placeholders filled in for
+  the current boot) and the SDK variables, and asks what to do if the program is already running.
+  It uses the program's own icon and goes where you choose (Desktop by default).
+- `--interactive` for `--launch-profile`: problems and the running-program question appear in dialogs.
+- Fix: the headless command-line modes reported early exits with the wrong exit code (e.g. "did not
+  close", 10, came back as 2).
+
 ## 1.4.0 — 2026-10-26
 
 - **Programs that are already running:** *Launch* and *Verify on this PC* now detect a running

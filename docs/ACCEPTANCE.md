@@ -104,7 +104,18 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | User's own running programs untouched during development | ✔ | only the probe was closed; Brave and Discord, which were running, were not tested |
 | Chromium-family suggestion without per-app code | ✔ | file signature; `tst_profiles::chromiumProgramsAreDetectedByTheirFiles` |
 
+## 1.5 — GPU shortcuts
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| The profile's GPU choice applies when the program is started the everyday way | ✔ (via a GPU Fusion shortcut) | `tst_running_live::shortcutStartsTheProgramThroughItsProfile` (Shell-opened .lnk → probe with the Intel LUID) |
+| Writes only where the user chooses; nothing system-wide | ✔ | save dialog / `--shortcut-dir`; default Desktop only on explicit request |
+| Running program handled with consent | ✔ | interactive dialog; dismissing it starts and closes nothing (checked) |
+| Correct exit codes for scripted use | ✔ | headless modes return `QApplication::exit`'s code |
+
 ## Tests at release
+
+1.5.0: 31 CTest entries, 225 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.4.0: 31 CTest entries, 223 cases, all passing with reference-machine expectations (2026-10-26).
 

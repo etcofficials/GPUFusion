@@ -104,6 +104,29 @@ On the command line, `--close-running` does the same for `--launch-profile` / `-
 Fusion's own probe (`tst_running_live`: closes on request; one that refuses or has no window is
 reported and left running). GPU Fusion never closed any of your programs during development.
 
+### GPU shortcuts (1.5)
+
+A profile's GPU option, launch arguments, SDK variables and running-program check apply only when
+GPU Fusion starts the program. **Create shortcut…** (GPU Manager), or `--create-shortcut <exe|id>
+[--shortcut-dir <folder>]`, writes a shortcut such as `msedge (Integrated GPU).lnk` with the program's
+own icon. By default it goes on the Desktop; in the GUI you choose where. It runs:
+
+```
+GPUFusion.exe --launch-profile <profile id> --interactive [--data-dir <dir>]
+```
+
+This starts the program through its profile **without opening GPU Fusion's window**, filling in the
+GPU placeholders for the mode's GPU at that moment, so new LUIDs after a restart do not matter. If
+the program is already running, a small dialog offers *Close it and start* / *Start anyway* /
+*Cancel*. Problems such as a removed profile, or a program that does not close, are shown in a
+dialog. The shortcut follows later changes to the profile. It stops working if the profile is removed
+or GPU Fusion is moved; GPU Fusion's uninstaller does not delete shortcuts you made.
+
+Verified: a shortcut opened through the Windows shell, as Explorer does on a double-click, started
+the probe with `--adapter 00000000_0000870F`, the Intel GPU's LUID at that boot
+(`tst_running_live`). With the program already running, the dialog waited; dismissing it started
+nothing and closed nothing.
+
 ### Chromium-based programs detected by their files (1.4)
 
 Programs built on Chromium (browsers, Electron and CEF apps) ship `icudtl.dat` and a V8 snapshot
