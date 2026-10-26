@@ -65,11 +65,24 @@ The page refreshes automatically when Windows reports a device change; **Refresh
 | "Undo … refused: changed outside GPU Fusion" | Windows Settings (or another tool) changed it after GPU Fusion did. Undo anyway only if you want GPU Fusion's earlier value back. |
 | "Could not save the change journal, so nothing was changed" | The data folder is not writable. GPU Fusion never changes a preference it cannot record. |
 | Verification shows "could not be restored" | Windows refused the restore; GPU Fusion retries at the next start. The value only affects GPUFusionProbe.exe. |
-| "Integrated GPU — Windows cannot enforce this on this PC", Apply disabled | The probe verification showed Windows still gives programs the other GPU under "Power saving". Writing it would not do what it says, so GPU Fusion does not. Use the program's own GPU setting, or (your decision, untested) drive the display from the integrated GPU. |
+| "Integrated GPU — Windows cannot enforce this on this PC", Apply disabled | The probe verification showed Windows still gives programs the other GPU under "Power saving". Writing it would not do what it says, so GPU Fusion does not. Use the program's own GPU option through its profile in the **GPU Manager** (launch arguments with a GPU placeholder, see the user guide, section 2), or (your decision, untested) drive the display from the integrated GPU. |
 | "Unknown — run the verification" | No probe verification yet on this PC; run it first (top of the page). |
 | Verify: "did no measurable GPU work while observed" | Use the program while GPU Fusion watches (open its window or a 3D view), or increase `--verify-seconds`. Programs that hand over to an already running instance exit at once — close every instance first. |
 | Verify: "GPU work … engine type not reported" | The Intel WDDM 1.2 driver does not name its engines: GPU Fusion can say *where* the work ran, not that it was 3D rendering. |
 | Verify: "The GPU work came from X.exe … probably a launcher" | The selected program starts the real renderer. Use the offered button to configure that executable instead. |
+
+## GPU Manager and GPU profiles
+
+| Symptom | Cause and fix |
+|---|---|
+| Applications page shows ✗ for a program | It is working on another GPU than its profile asks for. Usually it was started another way than through GPU Fusion (the program's own GPU option and the SDK apply only to Launch, Verify, GPU Fusion shortcuts and `--launch-profile`), or it was already running when a Windows preference was applied. Close it and start it through its profile, e.g. with a shortcut from **Create shortcut…**. |
+| *Verify* says "no measurable GPU work" | The program did no GPU work while watched. Use it during the check (open its window, play a video, open a 3D view). Browsers pause drawing when their window is covered or the desktop is locked: keep it visible. |
+| *Verify* says some processes "could not be inspected" | On the Intel HD 2000 (a pre-WDDM 2.0 driver), GPU use is read per process, and Windows does not let a standard user open some processes (other accounts', protected ones). Work there may be missing from the result. GPU Fusion does not ask for administrator rights. |
+| A browser ignores its GPU option | It was already running: the new window joined the running browser. Let GPU Fusion close it first (it offers to), or give the profile its own `--user-data-dir`. |
+| "did not close" / "running without a window" | GPU Fusion only asks programs to close (like their close button) and never ends them by force. Close the program yourself, including from its notification-area icon, and try again. |
+| A shortcut says there is no profile | The profile (or variant) was removed, or GPU Fusion was started with a different data folder. Create the shortcut again from the GPU Manager. |
+| A variant shows "Only with the program's support" | Windows keeps one GPU preference per program, and it belongs to the main profile. Give the variant the program's GPU option in its launch arguments. |
+| Imported profiles show "no longer there" | The program is not installed at that path on this PC. Remove the profile, or install the program. |
 
 ## Logs
 
@@ -151,3 +164,4 @@ disk worse.
 |---|---|
 | `cmake --preset` says the preset is disabled | Dot-source `scripts\env.ps1` first (it sets `GPUFUSION_ENV=1`). |
 | A dot-sourced script makes later commands stop on harmless stderr output | Use the current `env.ps1`, which restores `$ErrorActionPreference`. |
+| Build prints "Warning: Translations will not be available … Cannot open …/translations/catalogs.json" | Harmless. The Qt installation has no translation catalogues, and GPU Fusion deploys none (it is English-only; `--no-translations` is passed). Qt 6.8.3's windeployqt reads the file anyway. |

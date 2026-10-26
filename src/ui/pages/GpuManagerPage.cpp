@@ -14,6 +14,7 @@
 #include "ui/AppContext.h"
 #include "ui/Theme.h"
 #include "ui/widgets/Card.h"
+#include "ui/widgets/GuideDialog.h"
 
 #include <QApplication>
 #include <QButtonGroup>
@@ -241,6 +242,17 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
            "<b>E – one rendering workload split across GPUs:</b> needs Direct3D 12 on every GPU and the program's own support; "
            "GPU Fusion cannot add it to a program.<br>"
            "Both GPUs showing activity does not by itself mean a program got faster. GPU Fusion never injects code into or patches programs.")));
+    auto* guide = new QPushButton(tr("Open user guide"));
+    guide->setToolTip(tr("Step by step: choosing a program's GPU, its own GPU option, shortcuts, checking, variants, backup"));
+    auto* guideRow = new QHBoxLayout;
+    guideRow->addWidget(guide);
+    guideRow->addStretch(1);
+    aboutCard->body()->addLayout(guideRow);
+    connect(guide, &QPushButton::clicked, this, [this] {
+        auto* dialog = new GuideDialog(QStringLiteral("USER_GUIDE.md"), this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->show();
+    });
     layout->addWidget(aboutCard);
     layout->addStretch(1);
 

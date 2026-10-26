@@ -9,47 +9,31 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: version 1.8.0.** New in 1.8: the Applications page shows, live, whether each running
-> program with a GPU profile is on the GPU its profile asks for (✓/✗), without launching anything.
->
-> New in 1.7: **profile variants**, several GPU profiles for one program
-> (e.g. FFmpeg on the Intel GPU and on the GT 730, verified).
->
-> New in 1.6: **export and import of GPU profiles** for backup or another PC.
->
-> New in 1.5: **GPU shortcuts**. *Create shortcut…* makes a Desktop
-> shortcut that always starts a program through its GPU profile (its GPU option, arguments and the
-> running-program question) without opening GPU Fusion's window.
->
-> New in 1.4: when a program is already running, *Launch* and *Verify*
-> offer to close it gracefully first (a running program keeps its GPU). Chromium-based programs,
-> including Electron apps, are recognised by their files.
->
-> New in 1.3: profiles can pass the chosen GPU to a program through its
-> **own GPU option**, using placeholders such as `{luid_pair}` and `{dxgi_index}` in the launch
-> arguments. There are known-option suggestions with their evidence. **Verified: Microsoft Edge, Brave
-> and FFmpeg run on the Intel GPU this way**, where Windows' own preference cannot move programs.
->
-> Version 1.2 made it a generic GPU manager. The **GPU Manager** page keeps a GPU profile for
-> any program (picked from installed/running programs or browsed to): Automatic, Integrated GPU,
-> Discrete GPU or Both GPUs. For each mode it shows what that mode can do for this program on this PC,
-> applies the strongest mechanism that is justified, and verifies on the real GPUs which GPU(s) the
-> program used. An optional header-only [SDK](docs/SDK.md) lets programs follow the choice, including
-> where Windows cannot. A generic **job dispatcher** runs batches of independent jobs (any command
-> line with GPU placeholders) across the GPUs and measures whether that beats the best single GPU.
-> No application-specific code, injection or patching.
->
-> Since 1.1.0: live monitoring of every physical GPU (including
-> WDDM 1.x GPUs Task Manager cannot show), per-application GPU usage, adapter details, **per-application
-> GPU selection by adapter** (Intel / NVIDIA / automatic) that writes Windows' per-app preference only
-> where it is shown to work and **verifies where a program really renders** (see
-> [docs/GPU_SELECTION.md](docs/GPU_SELECTION.md)), a diagnostics page with an
-> exportable, privacy-safe report, a benchmark framework (warm-up + repeated runs, **output checked
-> bit-exactly**, JSON + CSV, comparisons only between equivalent runs), and a **Workload Lab** that
-> measures whether both GPUs together beat the best single one. On the reference PC: splitting a
-> compute workload by measured speed is **1.14–1.19× faster** than the GT 730 alone; decoding one video
-> stream per GPU is **2.2× slower** than decoding both on the Intel GPU — see
-> [docs/MULTI_GPU_RESEARCH.md](docs/MULTI_GPU_RESEARCH.md) and [docs/PHASE_PLAN.md](docs/PHASE_PLAN.md).
+**Version 1.8.0.** Every version's changes are in [CHANGELOG.md](CHANGELOG.md). For step-by-step use,
+see the **[User guide](docs/USER_GUIDE.md)**.
+
+## What it does
+
+| Page | What you get |
+|---|---|
+| **Dashboard** | Live load, memory and sensors of every physical GPU, including WDDM 1.x GPUs that Task Manager cannot show. |
+| **GPUs** | Every adapter Windows exposes, its driver, and its tested Direct3D capabilities. |
+| **Applications** | Which process uses which GPU, live. For programs with a GPU profile: whether they are on the GPU the profile asks for (✓/✗). Nothing is launched for this. |
+| **GPU Manager** | A GPU profile for **any program**: Automatic, Integrated, Discrete or Both GPUs. For each mode it shows what that mode can do for this program on this PC, and applies the strongest mechanism that is justified: Windows' per-app preference where it is shown to work, and otherwise the program's own GPU option (placeholders such as `{luid_pair}`, `{dxgi_index}`) or the [SDK](docs/SDK.md). It can launch the program and **verify which GPU it really used**, offer to close a running instance first, create **shortcuts** that start the program through its profile, hold **variants** (several profiles for one program), and **export/import** profiles. |
+| **GPU Preferences** | Windows' own per-app preference, what it does on this PC (measured with a probe), journalled changes with undo. |
+| **Workload Lab** | Measured experiments with both GPUs at once, plus a **job runner** for batches of independent jobs (any command line, or built-in decoding) that says whether both GPUs beat the best single one. |
+| **Benchmarks** | Repeatable, output-checked measurements, compared only with equivalent earlier runs. |
+| **Diagnostics** | System and graphics information and an exportable, privacy-safe report. |
+
+**Measured on the reference PC** (GT 730 + Intel HD 2000):
+- Windows' per-app preference cannot move programs to the Intel GPU here (the GT 730 is the boot
+  device and drives the only display). A program's own GPU option can: Microsoft Edge, Brave and
+  FFmpeg were verified on the Intel GPU through their profiles.
+- Splitting GPU Fusion's own compute workload by measured speed is 1.14–1.19× faster than the GT 730
+  alone. Batches of video-decode jobs gain at most about 10–15 % from the second GPU, and the result
+  varies between sessions. See [docs/MULTI_GPU_RESEARCH.md](docs/MULTI_GPU_RESEARCH.md).
+- Both GPUs showing activity never means by itself that a program got faster. GPU Fusion does not
+  inject code into or patch other programs.
 
 ## Supported systems
 
