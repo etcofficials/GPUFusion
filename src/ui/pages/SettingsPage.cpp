@@ -7,7 +7,11 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFileInfo>
+#include <QFileDialog>
 #include <QFormLayout>
+#include <QLineEdit>
+
+#include "profiles/ProfileStore.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -124,7 +128,6 @@ SettingsPage::SettingsPage(AppContext& context, QWidget* parent) : QWidget(paren
 
     // Benchmarks
     auto* bench = new Card(tr("Benchmarks"));
-    bench->setBadge(tr("Used from Phase 7"));
     auto* benchForm = makeForm(bench);
     m_warmupRuns = makeSpin(ranges::benchmarkWarmupRuns, 1, QString());
     m_measuredRuns = makeSpin(ranges::benchmarkMeasuredRuns, 1, QString());
@@ -134,6 +137,32 @@ SettingsPage::SettingsPage(AppContext& context, QWidget* parent) : QWidget(paren
     benchForm->addRow(tr("Measured runs"), m_measuredRuns);
     benchForm->addRow(tr("Keep results for"), m_retentionDays);
     layout->addWidget(bench);
+
+    // GPU profiles: automatic backup
+    auto* profilesCard = new Card(tr("GPU profiles"));
+    auto* profForm = makeForm(profilesCard);
+    auto* folderRow = new QHBoxLayout;
+    m_backupFolder = new QLineEdit;
+    m_backupFolder->setPlaceholderText(tr("off — choose a folder, ideally on another drive"));
+    m_backupFolder->setMinimumWidth(360);
+    m_backupFolder->setAccessibleName(tr("Profile backup folder"));
+    auto* browse = new QPushButton(tr("Browse…"));
+    browse->setAccessibleName(tr("Choose the profile backup folder"));
+    folderRow->addWidget(m_backupFolder, 1);
+    folderRow->addWidget(browse);
+    profForm->addRow(tr("Automatic backup to"), folderRow);
+    m_backupsKept = makeSpin(ranges::profileBackupsKept, 1, tr(" backups"));
+    m_backupsKept->setAccessibleName(tr("Profile backups kept"));
+    profForm->addRow(tr("Keep the newest"), m_backupsKept);
+    m_backupNote = note(QString());
+    profilesCard->body()->addWidget(m_backupNote);
+    layout->addWidget(profilesCard);
+    connect(browse, &QPushButton::clicked, this, [this] {
+        const QString dir = QFileDialog::getExistingDirectory(this, tr("Folder for automatic profile backups"), m_backupFolder->text());
+        if (!dir.isEmpty())
+            m_backupFolder->setText(QDir::toNativeSeparators(dir));
+    });
+    connect(m_backupFolder, &QLineEdit::textChanged, this, [this] { updateBackupNote(); updateDirtyState(); });
     layout->addStretch();
 
     // Action bar (outside the scroll area so it is always reachable)
@@ -162,7 +191,7 @@ SettingsPage::SettingsPage(AppContext& context, QWidget* parent) : QWidget(paren
         showSettings(d);
     });
 
-    for (QSpinBox* spin : { m_refreshMs, m_historySeconds, m_logMaxKB, m_logFiles, m_warmupRuns, m_measuredRuns, m_retentionDays })
+    for (QSpinBox* spin : { m_refreshMs, m_historySeconds, m_logMaxKB, m_logFiles, m_warmupRuns, m_measuredRuns, m_retentionDays, m_backupsKept })
         connect(spin, &QSpinBox::valueChanged, this, &SettingsPage::updateDirtyState);
     for (QCheckBox* box : { m_startMinimized, m_startMonitoring, m_useNvml })
         connect(box, &QCheckBox::toggled, this, &SettingsPage::updateDirtyState);
@@ -184,7 +213,27 @@ void SettingsPage::showSettings(const Settings& s)
     m_warmupRuns->setValue(s.benchmarkWarmupRuns);
     m_measuredRuns->setValue(s.benchmarkMeasuredRuns);
     m_retentionDays->setValue(s.benchmarkRetentionDays);
+    m_backupFolder->setText(s.profileBackupFolder);
+    m_backupsKept->setValue(s.profileBackupsKept);
+    updateBackupNote();
     updateDirtyState();
+}
+
+void SettingsPage::updateBackupNote()
+{
+    const QString folder = m_backupFolder->text().trimmed();
+    QString text;
+    if (folder.isEmpty())
+        text = tr("Off. When a folder is set, GPU Fusion saves all GPU profiles there after every change (an export file, the same "
+                  "format as GPU Manager → Export…), keeps the newest ones and deletes nothing else in that folder.");
+    else if (QDir::isRelativePath(folder))
+        text = tr("Enter a full path, e.g. D:\\Backups\\GPU Fusion.");
+    else if (profiles::onSameVolume(folder, m_context.data().root))
+        text = tr("Warning: this folder is on the same drive as GPU Fusion's data (%1). A backup there does not survive that drive "
+                  "failing; choose a folder on another drive.").arg(QDir::toNativeSeparators(m_context.data().root));
+    else
+        text = tr("Profiles are saved there after every change. Restore with GPU Manager → Import….");
+    m_backupNote->setText(text);
 }
 
 Settings SettingsPage::collect() const
@@ -202,6 +251,8 @@ Settings SettingsPage::collect() const
     s.benchmarkWarmupRuns = m_warmupRuns->value();
     s.benchmarkMeasuredRuns = m_measuredRuns->value();
     s.benchmarkRetentionDays = m_retentionDays->value();
+    s.profileBackupFolder = QDir::toNativeSeparators(m_backupFolder->text().trimmed());
+    s.profileBackupsKept = m_backupsKept->value();
     return s;
 }
 
@@ -225,10 +276,19 @@ void SettingsPage::updateDirtyState()
 void SettingsPage::save()
 {
     QString error;
-    if (m_context.updateSettings(collect(), &error))
-        updateDirtyState();
-    else
+    if (!m_context.updateSettings(collect(), &error)) {
         m_status->setText(tr("Could not save: %1").arg(error));
+        return;
+    }
+    updateDirtyState();
+    // A newly chosen backup folder gets a first backup now, not only at the next profile change.
+    const Settings& s = m_context.settings();
+    if (!s.profileBackupFolder.isEmpty() && m_context.profiles()) {
+        const profiles::BackupResult r = profiles::backupProfiles(m_context.profiles()->list(), s.profileBackupFolder, s.profileBackupsKept);
+        m_status->setText(!r.error.isEmpty() ? tr("Saved, but the profile backup failed: %1").arg(r.error)
+                          : r.written       ? tr("Saved. Profiles backed up to %1.").arg(r.path)
+                                            : tr("Saved. The newest backup already holds the current profiles."));
+    }
 }
 
 } // namespace gf::ui

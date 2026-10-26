@@ -7,6 +7,7 @@
 class QCheckBox;
 class QComboBox;
 class QLabel;
+class QLineEdit;
 class QPushButton;
 class QSpinBox;
 
@@ -23,6 +24,7 @@ private:
     void showSettings(const Settings& s);
     Settings collect() const;
     void updateDirtyState();
+    void updateBackupNote();
     void save();
 
     AppContext& m_context;
@@ -39,6 +41,9 @@ private:
     QSpinBox* m_warmupRuns;
     QSpinBox* m_measuredRuns;
     QSpinBox* m_retentionDays;
+    QLineEdit* m_backupFolder;
+    QSpinBox* m_backupsKept;
+    QLabel* m_backupNote;
 
     QPushButton* m_save;
     QPushButton* m_revert;

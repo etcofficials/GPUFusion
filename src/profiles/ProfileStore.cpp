@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QStorageInfo>
 #include <QVersionNumber>
 
 #include <algorithm>
@@ -83,6 +84,7 @@ bool ProfileStore::save(AppProfile& p, QString* error)
         if (error) *error = f.errorString();
         return false;
     }
+    changed();
     return true;
 }
 
@@ -95,7 +97,78 @@ bool ProfileStore::remove(const QString& id, QString* error)
         if (error) *error = f.errorString();
         return false;
     }
+    changed();
     return true;
+}
+
+void ProfileStore::changed()
+{
+    if (m_batch > 0) {
+        m_changedInBatch = true;
+        return;
+    }
+    if (m_onChange)
+        m_onChange();
+}
+
+void ProfileStore::endBatch()
+{
+    if (m_batch > 0 && --m_batch == 0 && std::exchange(m_changedInBatch, false) && m_onChange)
+        m_onChange();
+}
+
+// ---- automatic backup -------------------------------------------------------------------------------
+
+namespace {
+
+const QString kBackupPrefix = QStringLiteral("gpufusion-profiles-");
+
+// What a backup holds, without the export time (so identical profiles compare equal).
+QJsonArray backedUpProfiles(const QByteArray& document)
+{
+    return QJsonDocument::fromJson(document).object().value(QLatin1StringView("profiles")).toArray();
+}
+
+} // namespace
+
+BackupResult backupProfiles(const QList<AppProfile>& profiles, const QString& folder, int keep)
+{
+    BackupResult r;
+    QDir dir(folder);
+    if (folder.trimmed().isEmpty() || !QDir().mkpath(folder)) {
+        r.error = QStringLiteral("Cannot use the backup folder %1").arg(QDir::toNativeSeparators(folder));
+        return r;
+    }
+    const QByteArray document = exportProfiles(profiles);
+    // Newest first (the time stamp in the name sorts chronologically).
+    QStringList existing = dir.entryList({ kBackupPrefix + QStringLiteral("*.json") }, QDir::Files, QDir::Name | QDir::Reversed);
+    if (!existing.isEmpty()) {
+        QFile newest(dir.filePath(existing.first()));
+        if (newest.open(QIODevice::ReadOnly) && backedUpProfiles(newest.readAll()) == backedUpProfiles(document)) {
+            r.unchanged = true;
+            r.path = QDir::toNativeSeparators(newest.fileName());
+            return r;
+        }
+    }
+    const QString name = kBackupPrefix + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz")) + QStringLiteral(".json");
+    QSaveFile out(dir.filePath(name));
+    if (!out.open(QIODevice::WriteOnly) || out.write(document) < 0 || !out.commit()) {
+        r.error = out.errorString();
+        return r;
+    }
+    r.written = true;
+    r.path = QDir::toNativeSeparators(dir.filePath(name));
+    existing.prepend(name);
+    for (int i = std::max(1, keep); i < existing.size(); ++i)
+        if (QFile::remove(dir.filePath(existing[i])))
+            ++r.removed;
+    return r;
+}
+
+bool onSameVolume(const QString& a, const QString& b)
+{
+    const QStorageInfo va(QFileInfo(a).absolutePath()), vb(QFileInfo(b).absolutePath());
+    return va.isValid() && vb.isValid() && va.rootPath().compare(vb.rootPath(), Qt::CaseInsensitive) == 0;
 }
 
 QString resolveCurrentExecutable(const QString& exePath)
@@ -169,6 +242,12 @@ ImportResult importProfiles(ProfileStore& store, const QByteArray& document, boo
         return r;
     }
     r.ok = true;
+    // One change notification (e.g. one automatic backup) for the whole import, not one per profile.
+    struct Batch {
+        ProfileStore& s;
+        explicit Batch(ProfileStore& store) : s(store) { s.beginBatch(); }
+        ~Batch() { s.endBatch(); }
+    } batch(store);
     for (const QJsonValue& v : root.value(QLatin1StringView("profiles")).toArray()) {
         std::optional<AppProfile> p = AppProfile::fromJson(v.toObject());
         if (!p) {

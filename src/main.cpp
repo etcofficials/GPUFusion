@@ -217,6 +217,17 @@ int main(int argc, char* argv[])
     gf::bench::BenchmarkService lab(gf::bench::labDir(data.benchmarksDir()));
     gf::profiles::ProfileStore profileStore(QDir(data.configDir()).filePath(QStringLiteral("profiles")));
     gf::ui::AppContext context(data, &store, std::move(loaded), &hardware, &monitor, &preferences, &benchmarks, &lab, &profileStore);
+    // Automatic profile backup (Settings > GPU profiles): after every change, when a folder is set.
+    profileStore.setChangeCallback([&context, &profileStore] {
+        const gf::Settings& s = context.settings();
+        if (s.profileBackupFolder.trimmed().isEmpty())
+            return;
+        const gf::profiles::BackupResult r = gf::profiles::backupProfiles(profileStore.list(), s.profileBackupFolder, s.profileBackupsKept);
+        if (!r.error.isEmpty())
+            qCWarning(lcPrefs).noquote() << "Profile backup failed:" << r.error;
+        else if (r.written)
+            qCInfo(lcPrefs).noquote() << "Profiles backed up to" << r.path << (r.removed ? QStringLiteral("(%1 old backup(s) removed)").arg(r.removed) : QString());
+    });
     QObject::connect(&context, &gf::ui::AppContext::settingsChanged, &app, [&app, &monitor](const gf::Settings& s) {
         applyLoggingSettings(s);
         gf::ui::applyTheme(app, s.theme);

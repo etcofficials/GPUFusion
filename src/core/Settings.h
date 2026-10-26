@@ -10,8 +10,8 @@ namespace gf {
 // User settings. Every field has a safe default and a validated range; anything invalid in
 // a loaded file is replaced by its default and reported, never silently trusted.
 struct Settings {
-    // 1: initial. 2: monitoring.useNvml.
-    static constexpr int kSchemaVersion = 2;
+    // 1: initial. 2: monitoring.useNvml. 3: profiles.backupFolder / backupsKept.
+    static constexpr int kSchemaVersion = 3;
 
     // Monitoring
     int refreshIntervalMs = 1000;      // 250 .. 10000
@@ -35,6 +35,10 @@ struct Settings {
     int benchmarkMeasuredRuns = 5;     // 1 .. 50
     int benchmarkRetentionDays = 90;   // 0 (keep forever) .. 3650
 
+    // GPU profiles: automatic backup after every change (empty folder = off; nothing is written)
+    QString profileBackupFolder;       // absolute path, or empty
+    int profileBackupsKept = 10;       // 1 .. 100
+
     // Window state (not user-editable)
     QByteArray windowGeometry;
 
@@ -50,6 +54,7 @@ inline constexpr SettingRange logMaxFiles{ 1, 20 };
 inline constexpr SettingRange benchmarkWarmupRuns{ 0, 10 };
 inline constexpr SettingRange benchmarkMeasuredRuns{ 1, 50 };
 inline constexpr SettingRange benchmarkRetentionDays{ 0, 3650 };
+inline constexpr SettingRange profileBackupsKept{ 1, 100 };
 }
 
 QJsonObject toJson(const Settings& settings);

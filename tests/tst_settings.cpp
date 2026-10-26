@@ -45,12 +45,32 @@ private Q_SLOTS:
         s.benchmarkWarmupRuns = 2;
         s.benchmarkMeasuredRuns = 10;
         s.benchmarkRetentionDays = 0;
+        s.profileBackupFolder = QStringLiteral("D:\\Backups\\GPU Fusion");
+        s.profileBackupsKept = 25;
         s.windowGeometry = QByteArray("\x01\x02geometry", 10);
 
         QStringList warnings;
         const Settings back = gf::fromJson(gf::toJson(s), &warnings);
         QVERIFY2(warnings.isEmpty(), qPrintable(warnings.join('\n')));
         QCOMPARE(back, s);
+    }
+
+    // Automatic profile backup: off by default; only a full path is accepted.
+    void profileBackupSettings()
+    {
+        QCOMPARE(Settings{}.profileBackupFolder, QString());
+        QStringList warnings;
+        Settings s = gf::fromJson(QJsonDocument::fromJson(R"({"schemaVersion":3,"profiles":{"backupFolder":"relative\\dir","backupsKept":500}})")
+                                      .object(), &warnings);
+        QCOMPARE(s.profileBackupFolder, QString());            // relative path refused, backup stays off
+        QCOMPARE(s.profileBackupsKept, 10);                     // out of range -> default
+        QCOMPARE(warnings.size(), 2);
+        s.profileBackupFolder = QStringLiteral("backups");
+        QVERIFY(gf::validate(s).join(u' ').contains(QStringLiteral("full path")));
+        // Older settings files (schema 2) have no "profiles" section: defaults, no warning.
+        warnings.clear();
+        gf::fromJson(QJsonDocument::fromJson(R"({"schemaVersion":2,"monitoring":{"useNvml":true}})").object(), &warnings);
+        QVERIFY(warnings.isEmpty());
     }
 
     void missingFileGivesDefaults()

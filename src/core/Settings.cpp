@@ -88,6 +88,7 @@ QJsonObject toJson(const Settings& s)
         { "logging", QJsonObject{ { "level", s.logLevel }, { "maxFileKB", s.logMaxFileKB }, { "maxFiles", s.logMaxFiles } } },
         { "benchmarks", QJsonObject{ { "warmupRuns", s.benchmarkWarmupRuns }, { "measuredRuns", s.benchmarkMeasuredRuns },
                                      { "retentionDays", s.benchmarkRetentionDays } } },
+        { "profiles", QJsonObject{ { "backupFolder", s.profileBackupFolder }, { "backupsKept", s.profileBackupsKept } } },
         { "window", QJsonObject{ { "geometry", QString::fromLatin1(s.windowGeometry.toBase64()) } } },
     };
 }
@@ -116,6 +117,17 @@ Settings fromJson(const QJsonObject& root, QStringList* warnings)
     readInt(bench, "measuredRuns", ranges::benchmarkMeasuredRuns, &s.benchmarkMeasuredRuns, warnings);
     readInt(bench, "retentionDays", ranges::benchmarkRetentionDays, &s.benchmarkRetentionDays, warnings);
 
+    // Added in schema 3; absent before -> defaults (backup off).
+    const QJsonObject prof = section(root, "profiles", warnings);
+    if (const QJsonValue folder = prof.value(QLatin1StringView("backupFolder")); !folder.isUndefined()) {
+        const QString f = folder.toString().trimmed();
+        if (!folder.isString() || (!f.isEmpty() && QDir::isRelativePath(f)))
+            warnings->append(QStringLiteral("backupFolder: expected an absolute folder path; automatic profile backup is off"));
+        else
+            s.profileBackupFolder = QDir::toNativeSeparators(f);
+    }
+    readInt(prof, "backupsKept", ranges::profileBackupsKept, &s.profileBackupsKept, warnings);
+
     const QJsonValue geometry = section(root, "window", warnings).value(QLatin1StringView("geometry"));
     if (geometry.isString())
         s.windowGeometry = QByteArray::fromBase64(geometry.toString().toLatin1());
@@ -136,6 +148,9 @@ QStringList validate(const Settings& s)
     check(s.benchmarkWarmupRuns, ranges::benchmarkWarmupRuns, "Warm-up runs");
     check(s.benchmarkMeasuredRuns, ranges::benchmarkMeasuredRuns, "Measured runs");
     check(s.benchmarkRetentionDays, ranges::benchmarkRetentionDays, "Benchmark retention (days)");
+    check(s.profileBackupsKept, ranges::profileBackupsKept, "Profile backups kept");
+    if (!s.profileBackupFolder.trimmed().isEmpty() && QDir::isRelativePath(s.profileBackupFolder.trimmed()))
+        problems << QStringLiteral("Profile backup folder must be a full path (e.g. D:\\Backups\\GPU Fusion)");
     if (!kThemes.contains(s.theme))
         problems << QStringLiteral("Theme must be one of %1").arg(kThemes.join(u'/'));
     if (!kLogLevels.contains(s.logLevel))

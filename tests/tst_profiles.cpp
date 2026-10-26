@@ -275,6 +275,56 @@ private Q_SLOTS:
         QVERIFY(importProfiles(target, R"({"gpuFusionProfiles":2,"profiles":[]})", false).error.contains(QStringLiteral("newer")));
     }
 
+    // Automatic backup: written after a change, skipped when nothing changed, rotated to `keep`, other
+    // files untouched; an import triggers one backup, not one per profile.
+    void automaticBackup()
+    {
+        const QString folder = m_dir.filePath(QStringLiteral("backups"));
+        QDir().mkpath(folder);
+        touch(folder + QStringLiteral("/my-notes.txt"));                    // someone else's file in the folder
+        ProfileStore store(m_dir.filePath(QStringLiteral("backup-src")));
+        int notifications = 0;
+        QList<BackupResult> results;
+        store.setChangeCallback([&] {
+            ++notifications;
+            results << backupProfiles(store.list(), folder, 3);
+        });
+        QString error;
+        AppProfile a = newProfile(m_dir.filePath(QStringLiteral("b/a.exe")));
+        QVERIFY(store.save(a, &error));
+        QCOMPARE(notifications, 1);
+        QVERIFY(results.last().written);
+        QVERIFY(backupProfiles(store.list(), folder, 3).unchanged);       // same profiles: nothing written
+
+        for (int i = 0; i < 4; ++i) {                                       // 4 more changes, keep 3
+            a.mode = i % 2 ? GpuMode::Integrated : GpuMode::Discrete;
+            QTest::qWait(5);                                                // distinct time stamps
+            QVERIFY(store.save(a, &error));
+        }
+        const QStringList backups = QDir(folder).entryList({ QStringLiteral("gpufusion-profiles-*.json") }, QDir::Files);
+        QCOMPARE(backups.size(), 3);
+        QVERIFY(QFile::exists(folder + QStringLiteral("/my-notes.txt")));    // never touched
+        // The newest backup restores the current state.
+        QFile newest(QDir(folder).filePath(backups.last()));
+        QVERIFY(newest.open(QIODevice::ReadOnly));
+        ProfileStore restored(m_dir.filePath(QStringLiteral("backup-restored")));
+        QVERIFY(importProfiles(restored, newest.readAll(), false).ok);
+        QCOMPARE(restored.find(a.exePath)->mode, a.mode);
+
+        // Import of several profiles: one notification for the whole batch.
+        ProfileStore other(m_dir.filePath(QStringLiteral("backup-other")));
+        QList<AppProfile> many;
+        for (int i = 0; i < 5; ++i)
+            many << newProfile(m_dir.filePath(QStringLiteral("many/p%1.exe").arg(i)));
+        notifications = 0;
+        QVERIFY(importProfiles(store, exportProfiles(many), false).ok);
+        QCOMPARE(notifications, 1);
+        QCOMPARE(store.list().size(), 6);
+
+        QVERIFY(onSameVolume(m_dir.path(), folder));
+        QVERIFY(!backupProfiles(store.list(), QString(), 3).error.isEmpty());
+    }
+
     void versionFoldersResolveToTheNewestCopy()
     {
         const QString root = m_dir.filePath(QStringLiteral("Discordish"));

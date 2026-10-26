@@ -5,6 +5,8 @@
 #include <QList>
 #include <QString>
 
+#include <functional>
+
 namespace gf::profiles {
 
 // One JSON file per program in <data>\config\profiles\<id>.json, written atomically — editing one
@@ -19,10 +21,34 @@ public:
     bool save(AppProfile& profile, QString* error);        // fills id/created/modified
     bool remove(const QString& id, QString* error);
 
+    // Called after a successful save or remove (e.g. to back the profiles up). Inside a batch it is
+    // called once, when the outermost batch ends, if anything changed.
+    void setChangeCallback(std::function<void()> callback) { m_onChange = std::move(callback); }
+    void beginBatch() { ++m_batch; }
+    void endBatch();
+
 private:
     QString pathFor(const QString& id) const;
+    void changed();
     QString m_dir;
+    std::function<void()> m_onChange;
+    int m_batch = 0;
+    bool m_changedInBatch = false;
 };
+
+// Automatic backup: writes an export of all profiles to `folder` as
+// gpufusion-profiles-<yyyyMMdd-HHmmss-zzz>.json, unless the newest backup there already holds the same
+// profiles, and keeps only the newest `keep` backups (other files are never touched).
+struct BackupResult {
+    bool written = false;
+    bool unchanged = false;     // identical to the newest backup: nothing written
+    QString path;
+    QString error;
+    int removed = 0;            // old backups deleted beyond `keep`
+};
+BackupResult backupProfiles(const QList<AppProfile>& profiles, const QString& folder, int keep);
+// Whether two paths are on the same drive/volume (a backup there does not survive that drive failing).
+bool onSameVolume(const QString& a, const QString& b);
 
 // Self-updating programs often install each version into a sibling folder ("app-1.0.9188",
 // "app-1.0.9265", "1.2.3"). If `exePath`'s folder looks like such a version folder and a newer sibling
