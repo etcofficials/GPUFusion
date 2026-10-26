@@ -269,6 +269,12 @@
   packages, README overview by page, troubleshooting for the GPU Manager, doc audit for statements
   later releases made stale. The "translations" build warning was investigated: harmless, documented.
 
+## 1.10 — accessibility (2026-10-26)
+
+- Automated check of every visible interactive control on every page (accessible name, Tab
+  reachability) plus keyboard-only selection of benchmarks. It found and fixed: an unusable-by-keyboard
+  benchmark list, unreachable read-only tables, and unnamed fields, selectors and tables.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

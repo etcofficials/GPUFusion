@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.10.0 — 2026-10-26
+
+Accessibility and keyboard use.
+
+- Every interactive control on every page now has an accessible name (what a screen reader
+  announces) and can be reached with Tab. This is checked by a new test that visits all pages of
+  the real window: 90 controls.
+- Fixes found by that test:
+  - **Benchmarks:** the list of benchmarks to run could not be focused, so benchmarks could not be
+    chosen without a mouse. Now the arrow keys and Space work. The workload-size selector and the
+    results table are named.
+  - **Diagnostics:** the four read-only tables can be reached with Tab and are named, so they can be
+    read with the keyboard or a screen reader.
+  - **GPU Preferences, Workload Lab, GPU Manager:** named tables, fields and selectors. The launch
+    arguments field has a keyboard shortcut (Alt+L). The *Add program* picker and the guide viewer
+    are named too.
+
 ## 1.9.0 — 2026-10-26
 
 Documentation you can use from inside the app.

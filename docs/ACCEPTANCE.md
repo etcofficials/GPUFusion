@@ -142,7 +142,17 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Users can find out how to do things without reading source or history | ✔ | `docs/USER_GUIDE.md`, shown in the app; shipped in the packages; `tst_guide` |
 | Docs do not contradict the current version | ✔ | audit of README/docs for statements later releases made stale; README rewritten as an overview |
 
+## 1.10 — accessibility
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Every control has an accessible name | ✔ | `tst_accessibility` (90 controls, 9 pages) |
+| Everything usable with the keyboard | ✔ (controls reachable with Tab; benchmark selection with Space) | `tst_accessibility` |
+| Tested with an actual screen reader | ✘ (not done) | names are checked through Qt's accessibility interface, which screen readers use; no screen reader is installed on the reference PC |
+
 ## Tests at release
+
+1.10.0: 34 CTest entries, 234 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.9.0: 33 CTest entries, 233 cases, all passing with reference-machine expectations (2026-10-26).
 

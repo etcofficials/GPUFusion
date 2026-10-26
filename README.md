@@ -9,7 +9,7 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-**Version 1.9.0.** Every version's changes are in [CHANGELOG.md](CHANGELOG.md). For step-by-step use,
+**Version 1.10.0.** Every version's changes are in [CHANGELOG.md](CHANGELOG.md). For step-by-step use,
 see the **[User guide](docs/USER_GUIDE.md)**.
 
 ## What it does
