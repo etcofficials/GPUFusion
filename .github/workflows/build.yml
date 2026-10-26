@@ -41,7 +41,15 @@ jobs:
       # CI machines have no physical GPU: only hardware-independent tests run here. The hardware
       # suite (-L hardware) runs on a real PC; see docs/TESTING.md.
       - name: Unit tests
-        run: ctest --preset release -L unit --timeout 120
+        run: ctest --preset release -L unit --timeout 120 --output-on-failure
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GPUFusion-test-logs
+          path: build/release/test-temp/*.log
+          retention-days: 7
 
       - name: Upload build
         if: success()
