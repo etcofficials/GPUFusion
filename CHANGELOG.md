@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.5.1 — 2026-10-26
+
+Hardening of the 1.2–1.5 work.
+
+- Fix: a Windows per-app value holding only other keys, such as Windows' own windowed-game
+  optimisation `SwapEffectUpgradeEnable=1;`, was shown as "Unrecognised value". It is now "Not set",
+  because no GPU preference is stored. A `GpuPreference` entry that cannot be read is still reported
+  as unrecognised.
+- GPU profile files that cannot be read (for example, damaged by a failing disk) are now logged and
+  left in place, instead of being skipped silently.
+- Verified in a clean **debug build**: the full test suite and every page's start/close smoke test
+  pass, with no assertions or debug-heap errors.
+- Build script: recovers from `C1051` (obsolete `.pdb`) and truncated generated `.moc` files.
+
 ## 1.5.0 — 2026-10-26
 
 - **GPU shortcuts:** *Create shortcut…* in the GPU Manager (and `--create-shortcut <exe|id>

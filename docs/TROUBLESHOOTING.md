@@ -123,6 +123,12 @@ of *that* file fail. `scripts\package.ps1` therefore times out hung launches and
 data folder back; re-running it writes fresh files. The published packages were verified on another
 drive after download.
 
+2026-10-26, rebuilding the debug tree (unused for ten days): `C1051` (a `.pdb` "has an obsolete
+format"), then `C2471` for another `.pdb`, then `C1004` in a **truncated generated `.moc` file**. The
+whole debug tree (800 MB of generated files) was deleted and rebuilt cleanly. `build.ps1` now also
+treats `C1051` as damage, and can remove damaged generated `.moc`/`.cpp` files inside the build
+directory. It never touches anything outside the build directory.
+
 Evidence (read-only checks; SMART read once with administrator consent):
 
 | Source | Finding | Meaning |

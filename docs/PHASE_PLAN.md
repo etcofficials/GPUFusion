@@ -233,6 +233,20 @@
 - Headless exit codes fixed (early exits now reported correctly).
 - Verified with the probe through the Windows shell; interactive running-program dialog exercised.
 
+## 1.6 hardening — release 1.5.1 (2026-10-26)
+
+- Clean debug build: the full suite and every page's smoke test pass (the debug heap and asserts
+  found use-after-free bugs in Phase 9; none this time).
+- Review of 1.2–1.5:
+  - **Fixed:** "other keys only" Windows values were shown as unrecognised.
+  - **Fixed:** damaged profile files were skipped silently; they are now logged and kept.
+  - **Checked, no change needed:** thread and lifetime handling in the GPU Manager and the job panel
+    (cancel + wait); the dispatcher's straggler rule cannot leave jobs unassigned; Media Foundation
+    start-up is once-only and thread-safe; closing programs is limited to their own visible
+    top-level windows.
+- Failing disk: the debug tree was damaged (truncated `.moc`). It was rebuilt, and `build.ps1`
+  recovers from that now.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

@@ -115,6 +115,9 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 
 ## Tests at release
 
+1.5.1: 31 CTest entries, 226 cases, all passing (release, reference-machine expectations); full
+suite and page smoke tests also pass in a clean debug build (2026-10-26).
+
 1.5.0: 31 CTest entries, 225 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.4.0: 31 CTest entries, 223 cases, all passing with reference-machine expectations (2026-10-26).
