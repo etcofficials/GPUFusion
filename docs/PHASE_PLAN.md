@@ -217,9 +217,18 @@
   `PROCESS_QUERY_LIMITED_INFORMATION`. Processes that still cannot be read are reported.
 - Live test: a real browser confirmed on the Intel GPU through its option.
 
+## 1.4 — running programs, Chromium detection (2026-10-26)
+
+- Launch/Verify detect running instances and offer a graceful close (WM_CLOSE to top-level windows,
+  never forced); CLI `--close-running`.
+- Chromium/Electron/CEF programs recognised by their runtime files, so the verified switch is
+  suggested and marked not verified for that program.
+- Checked: VLC has no command-line adapter option. Discord was not tested because it was in use.
+- Tests: `tst_running_live` (probe only, serial), GUI close-then-verify, detection unit tests.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.
 - Possible next steps:
-  - more known options, each verified before it is marked so;
-  - a per-profile `--user-data-dir` helper for browsers that are already running.
+  - more known options, each verified before it is marked so (Electron apps such as Discord, when
+    they can be tested without disturbing the user).

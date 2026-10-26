@@ -9,7 +9,11 @@ GPU Fusion reports only what the hardware and drivers actually expose. Metrics t
 read are shown as *Unsupported* or *Unavailable*, never as zero, and no performance gain is
 claimed without a benchmark that measured it.
 
-> **Status: version 1.3.0.** New in 1.3: profiles can pass the chosen GPU to a program through its
+> **Status: version 1.4.0.** New in 1.4: when a program is already running, *Launch* and *Verify*
+> offer to close it gracefully first (a running program keeps its GPU). Chromium-based programs,
+> including Electron apps, are recognised by their files.
+>
+> New in 1.3: profiles can pass the chosen GPU to a program through its
 > **own GPU option**, using placeholders such as `{luid_pair}` and `{dxgi_index}` in the launch
 > arguments. There are known-option suggestions with their evidence. **Verified: Microsoft Edge, Brave
 > and FFmpeg run on the Intel GPU this way**, where Windows' own preference cannot move programs.
@@ -110,6 +114,7 @@ GPUFusion.exe [--data-dir <path>] [--page <id>] [--smoke-test[=<ms>]] [--screens
 | `--verify-seconds <n>` | With `--verify-app` / `--verify-profile`: how long to watch (default 20) |
 | `--apply-profile <exe> --mode <m>` | Create/update the GPU profile of any program (`automatic`, `integrated`, `discrete`, `both`; `--profile-args` for launch arguments, which may contain GPU placeholders such as `{luid_pair}` / `{dxgi_index}`; `--profile-known-option` adds the program's known GPU option), apply it, exit |
 | `--launch-profile <exe\|id>` | Start the program from its profile (arguments + GPU choice for SDK programs) |
+| `--close-running` | With `--launch-profile` / `--verify-profile`: if the program is running, ask it to close first (never forced; exit code 10 if it stays open) |
 | `--verify-profile <exe\|id>` | Start it from its profile, verify which GPU(s) it used, store the result (0 = mode confirmed) |
 | `--dispatch <template\|decode>` | Run one job per input over the GPUs; `--dispatch-inputs <folder\|a;b>`, `--dispatch-output`, `--dispatch-pattern {stem}.ext`, `--dispatch-gpus all\|integrated\|discrete\|0,1`, `--dispatch-compare <n>` (measured comparison) |
 

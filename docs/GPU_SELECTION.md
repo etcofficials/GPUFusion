@@ -72,12 +72,53 @@ recognises by executable name. Each one states its evidence. You can add your ow
 | Chrome, Vivaldi, Opera, Chromium | same switch | not verified here (same Chromium code) |
 | FFmpeg | `-init_hw_device d3d11va=gf:{dxgi_index} -hwaccel d3d11va -hwaccel_device gf` | **Verified:** index 1 → decoding work on Intel; index 0 → GT 730 video engine; identical frame hashes |
 
-Caveat for browsers: a browser that is already running ignores the switch, because the new window
-joins the running instance. Close every window first, or give the profile its own `--user-data-dir`.
+Caveats for browsers:
+- A browser that is already running ignores the switch, because the new window joins the running
+  instance. Close every window first (1.4 offers to do this), or give the profile its own
+  `--user-data-dir`.
+- Chromium pauses rendering for windows that are covered or minimised, or while the desktop is
+  locked. Keep the browser window visible while *Verify on this PC* watches, otherwise the result is
+  "no measurable GPU work". The live test adds `--disable-features=CalculateNativeWinOcclusion
+  --disable-backgrounding-occluded-windows --disable-renderer-backgrounding` for this reason. A run
+  without them failed this way once while the desktop was unattended.
 
 Measured end to end through a profile (`--apply-profile msedge.exe --mode integrated
 --profile-known-option`, then `--verify-profile`): **"Confirmed: the program's GPU work ran on
 Intel(R) HD Graphics"**. Automatic mode: GT 730. No Windows value was written for Edge.
+
+### Programs that are already running (1.4)
+
+Windows applies a per-app preference, and programs read their own GPU option, only when they start.
+Many programs (browsers, chat apps) also hand a new launch over to the instance that is already
+running. So *Launch* and *Verify on this PC* now check whether the program is running. If it is,
+they explain why that matters and offer:
+
+- **Close it and continue:** GPU Fusion sends a close request to the program's top-level windows,
+  as if you clicked their close buttons, and waits up to 15 s. It never ends a program by force.
+  If the program asks to save something, keeps running in the background, or has no window (tray
+  only), GPU Fusion says so and stops.
+- **Continue anyway**, or **Cancel**.
+
+On the command line, `--close-running` does the same for `--launch-profile` / `--verify-profile`
+(exit code 10 if the program stays open). Without it, a warning is logged. Tested only with GPU
+Fusion's own probe (`tst_running_live`: closes on request; one that refuses or has no window is
+reported and left running). GPU Fusion never closed any of your programs during development.
+
+### Chromium-based programs detected by their files (1.4)
+
+Programs built on Chromium (browsers, Electron and CEF apps) ship `icudtl.dat` and a V8 snapshot
+(`v8_context_snapshot.bin` or `snapshot_blob.bin`). These files sit next to the executable (Electron,
+e.g. Discord) or in a version folder beside it (Chrome, Edge, Brave). For such programs GPU Fusion
+suggests the Chromium switch `--use-adapter-luid={luid_pair}`. The suggestion is marked *detected,
+not verified with this program*, because some apps do not pass command-line switches on to Chromium.
+Programs known by name keep their own entry and evidence.
+
+### Other programs checked on the reference PC
+
+| Program | GPU option on its command line | Result |
+|---|---|---|
+| VLC 3 | none for choosing the Direct3D 11 adapter (help text checked; `--gpu-affinity` is an OpenGL affinity setting) | no suggestion; on this PC it uses the default GPU |
+| Discord (Electron) | detected as Chromium-based | not tested: it was running and in use, so it was not closed or relaunched |
 
 ### Verification fix found on the way
 

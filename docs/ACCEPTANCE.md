@@ -95,7 +95,18 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Verification does not miss sandboxed processes on WDDM 1.x GPUs | ✔ | limited-rights retry; uninspected processes named; `tst_gpuselection` |
 | Arbitrary programs without a GPU option on the Intel GPU | ✘ (Windows limitation, unchanged) | documented |
 
+## 1.4 — running programs
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| A running program is not silently "verified" with the wrong GPU | ✔ | Launch/Verify detect it and explain; verification still notes "another instance was running" |
+| Closing is graceful, consented, never forced | ✔ | WM_CLOSE only, after the user's choice (GUI) or `--close-running` (CLI); `tst_running_live` (refusing / windowless programs left running) |
+| User's own running programs untouched during development | ✔ | only the probe was closed; Brave and Discord, which were running, were not tested |
+| Chromium-family suggestion without per-app code | ✔ | file signature; `tst_profiles::chromiumProgramsAreDetectedByTheirFiles` |
+
 ## Tests at release
+
+1.4.0: 31 CTest entries, 223 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.3.0: 30 CTest entries, 218 cases, all passing with reference-machine expectations (2026-10-26).
 

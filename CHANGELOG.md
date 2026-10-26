@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0 — 2026-10-26
+
+- **Programs that are already running:** *Launch* and *Verify on this PC* now detect a running
+  instance. They explain that it keeps its current GPU (and may take over the new launch), and offer
+  to close it first. Closing works like clicking the program's close button and is never forced.
+  Programs that refuse, or run without a window, are reported and left alone. On the command line:
+  `--close-running` (exit code 10 if the program stays open).
+- **Chromium-based programs detected by their files** (`icudtl.dat` + V8 snapshot, next to the exe or
+  in a version folder). The verified Chromium GPU switch is suggested for any of them, including
+  Electron apps, and marked "not verified with this program".
+- GPUFusionProbe `--window <s>` / `--ignore-close`: a test stand-in for a program with a window.
+
 ## 1.3.0 — 2026-10-26
 
 Real programs on the GPU you choose, through their own GPU option. Verified with Microsoft Edge,

@@ -177,7 +177,11 @@ const u=g.getUniformLocation(p,'t');let t=0;(function f(){g.uniform1f(u,t+=.02);
         };
 
         AppProfile p = newProfile(browser);
-        p.arguments = withKnownOption(QStringLiteral("\"--user-data-dir=%1\" --no-first-run --no-default-browser-check --disable-extensions %2")
+        // Chromium stops rendering windows it considers hidden or covered (e.g. while the desktop is
+        // locked); these switches keep the test page rendering whatever the desktop's state.
+        p.arguments = withKnownOption(QStringLiteral("\"--user-data-dir=%1\" --no-first-run --no-default-browser-check --disable-extensions "
+                                                     "--disable-features=CalculateNativeWinOcclusion --disable-backgrounding-occluded-windows "
+                                                     "--disable-renderer-backgrounding %2")
                                           .arg(userData, QUrl::fromLocalFile(page.fileName()).toString()), *known);
         p.mode = GpuMode::Integrated;
         const mon::UsageVerdict onIntel = verifyProfile(p, m_detection, std::nullopt, 12);
