@@ -30,6 +30,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QInputDialog>
 #include <QRadioButton>
 #include <QSaveFile>
 #include <QScrollArea>
@@ -130,9 +131,25 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
     exportButton->setToolTip(tr("Save every profile to one file — a backup, or to use them on another PC"));
     auto* importButton = new QPushButton(tr("Import…"));
     importButton->setToolTip(tr("Add profiles from an exported file. Nothing changes in Windows until you apply a profile."));
+    m_addVariant = new QPushButton(tr("Add variant…"));
+    m_addVariant->setToolTip(tr("Another profile for the same program, with its own GPU mode and arguments (e.g. one for each GPU). "
+                                "Windows keeps one GPU preference per program, so a variant passes its GPU through the program's own "
+                                "option or the SDK."));
     buttons->addWidget(pick);
     buttons->addWidget(browseButton);
+    buttons->addWidget(m_addVariant);
     buttons->addWidget(m_remove);
+    connect(m_addVariant, &QPushButton::clicked, this, [this] {
+        const auto p = selected();
+        if (!p)
+            return;
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Add variant"),
+                                                   tr("Name of the variant of %1 (e.g. \"Intel GPU\", \"video encoding\"):").arg(p->name),
+                                                   QLineEdit::Normal, QString(), &ok);
+        if (ok)
+            addVariant(name);
+    });
     buttons->addStretch(1);
     buttons->addWidget(exportButton);
     buttons->addWidget(importButton);
@@ -268,7 +285,7 @@ void GpuManagerPage::refreshList()
     m_list->clear();
     if (m_context.profiles()) {
         for (const AppProfile& p : m_context.profiles()->list()) {
-            QString line = QStringLiteral("%1 — %2").arg(p.name, profiles::modeText(p.mode));
+            QString line = QStringLiteral("%1 — %2").arg(profiles::displayName(p), profiles::modeText(p.mode));
             if (p.lastVerification && p.lastVerification->mode == p.mode)
                 line += p.lastVerification->confirmed ? tr("  (verified)")
                       : p.mode == GpuMode::Automatic && p.lastVerification->outcome == QLatin1StringView("observed") ? tr("  (checked)")
@@ -378,7 +395,7 @@ void GpuManagerPage::removeSelected()
     const auto p = selected();
     if (!p)
         return;
-    QString message = tr("Remove GPU Fusion's profile for %1?").arg(p->name);
+    QString message = tr("Remove GPU Fusion's profile for %1?").arg(profiles::displayName(*p));
     const std::optional<QString> stored = m_context.preferences().manager().rawValue(profiles::resolveCurrentExecutable(p->exePath));
     if (stored && pref::parseGpuPreference(*stored) != pref::GpuPreference::NotSet)
         message += tr("\n\nThe Windows preference it stored (%1) is kept. Set the mode to Automatic and apply first to remove it.").arg(*stored);
@@ -440,6 +457,36 @@ void GpuManagerPage::useKnownOption()
 }
 
 void GpuManagerPage::setArguments(const QString& arguments) { m_arguments->setText(arguments); }
+
+bool GpuManagerPage::addVariant(const QString& variantName)
+{
+    const auto p = selected();
+    if (!p || !m_context.profiles())
+        return false;
+    AppProfile base = *p;
+    base.variant.clear(); // a variant of a variant is a variant of the same program
+    auto v = profiles::newVariant(base, variantName);
+    if (!v) {
+        m_result->setText(tr("A variant needs a name."));
+        return false;
+    }
+    v->name = p->name;
+    v->mode = p->mode;
+    v->arguments = p->arguments;
+    if (m_context.profiles()->find(v->id)) {
+        m_result->setText(tr("%1 already has a variant called \"%2\".").arg(p->name, v->variant).toHtmlEscaped());
+        return false;
+    }
+    if (!saveProfile(*v))
+        return false;
+    refreshList();
+    for (int i = 0; i < m_list->count(); ++i)
+        if (m_list->item(i)->data(Qt::UserRole).toString() == v->id)
+            m_list->setCurrentRow(i);
+    m_result->setText(tr("Variant \"%1\" added. Choose its GPU mode and, for Integrated or Discrete, give it the program's GPU option "
+                         "(Windows keeps one GPU preference per program: the main profile's).").arg(v->variant.toHtmlEscaped()));
+    return true;
+}
 
 bool GpuManagerPage::exportTo(const QString& path)
 {
@@ -517,6 +564,7 @@ void GpuManagerPage::refreshEditor()
     const auto p = selected();
     m_editor->setEnabled(p.has_value());
     m_remove->setEnabled(p.has_value() && !m_thread);
+    m_addVariant->setEnabled(p.has_value() && !m_thread);
     if (!p) {
         m_header->setText(m_context.profiles() ? tr("Add a program to choose its GPU.") : tr("Profiles are not available."));
         m_capability->clear();
@@ -526,7 +574,7 @@ void GpuManagerPage::refreshEditor()
     m_loading = true;
     const QString current = profiles::resolveCurrentExecutable(p->exePath);
     QString header = QStringLiteral("<b>%1</b><br><span style='color:%2'>%3</span>")
-                         .arg(p->name.toHtmlEscaped(), colors().textMuted.name(), p->exePath.toHtmlEscaped());
+                         .arg(profiles::displayName(*p).toHtmlEscaped(), colors().textMuted.name(), p->exePath.toHtmlEscaped());
     if (!QFileInfo::exists(current))
         header += QStringLiteral("<br><span style='color:%1'>%2</span>").arg(colors().bad.name(), tr("The program is no longer there.").toHtmlEscaped());
     else if (current != p->exePath)
@@ -580,6 +628,7 @@ void GpuManagerPage::setBusy(bool busy)
     m_shortcut->setEnabled(!busy && exists);
     m_verify->setEnabled(!busy && exists && m_context.hardware().latest().has_value());
     m_remove->setEnabled(!busy && p.has_value());
+    m_addVariant->setEnabled(!busy && p.has_value());
     m_list->setEnabled(!busy);
 }
 
@@ -600,7 +649,7 @@ void GpuManagerPage::applySelected(bool confirm)
     const std::optional<QString> before = manager.rawValue(exe);
     const QString afterText = pref::withGpuPreference(before.value_or(QString()), cap.write.value_or(pref::GpuPreference::NotSet));
     const std::optional<QString> after = afterText.isEmpty() ? std::nullopt : std::optional<QString>(afterText);
-    if (confirm && before != after) {
+    if (confirm && before != after && p->variant.isEmpty()) { // variants never change the Windows value
         const QString message = tr("Mode: %1\n\nGPU Fusion will change one per-user Windows setting:\n\n"
                                    "Key: HKEY_CURRENT_USER\\Software\\Microsoft\\DirectX\\UserGpuPreferences\nValue: %2\nFrom: %3\nTo: %4\n\n"
                                    "The previous value is recorded first, so you can undo this on the GPU Preferences page.")
@@ -674,7 +723,7 @@ void GpuManagerPage::launchSelected()
         return;
     QString error;
     const auto pid = profiles::launchProfile(*p, profiles::selectableGpus(*d), &error);
-    m_result->setText(pid ? tr("Started %1 (process %2) in mode %3.").arg(p->name.toHtmlEscaped()).arg(*pid).arg(profiles::modeText(p->mode))
+    m_result->setText(pid ? tr("Started %1 (process %2) in mode %3.").arg(profiles::displayName(*p).toHtmlEscaped()).arg(*pid).arg(profiles::modeText(p->mode))
                           : tr("Could not start %1: %2").arg(p->name, error).toHtmlEscaped());
 }
 

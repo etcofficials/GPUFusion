@@ -30,7 +30,7 @@ QString hresultText(HRESULT hr) { return QStringLiteral("0x%1").arg(quint32(hr),
 
 QString shortcutName(const AppProfile& profile)
 {
-    QString name = QStringLiteral("%1 (%2)").arg(profile.name, modeText(profile.mode));
+    QString name = QStringLiteral("%1 (%2)").arg(displayName(profile), modeText(profile.mode));
     static const QRegularExpression invalid(QStringLiteral(R"([<>:"/\\|?*\x00-\x1F])"));
     name.replace(invalid, QStringLiteral("_"));
     return name.trimmed();
@@ -60,7 +60,7 @@ ShortcutSpec profileShortcut(const AppProfile& profile, const QString& gpuFusion
     s.arguments = shortcutArguments(profile, dataDir);
     s.workingDirectory = QDir::toNativeSeparators(QFileInfo(resolveCurrentExecutable(profile.exePath)).absolutePath());
     s.iconPath = QDir::toNativeSeparators(profile.exePath);
-    s.description = QStringLiteral("Starts %1 with GPU mode \"%2\" through GPU Fusion").arg(profile.name, modeText(profile.mode));
+    s.description = QStringLiteral("Starts %1 with GPU mode \"%2\" through GPU Fusion").arg(displayName(profile), modeText(profile.mode));
     return s;
 }
 

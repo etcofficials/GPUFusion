@@ -63,7 +63,8 @@ bool ProfileStore::save(AppProfile& p, QString* error)
         return false;
     }
     p.exePath = QDir::toNativeSeparators(QFileInfo(p.exePath).absoluteFilePath());
-    p.id = profileIdFor(p.exePath);
+    p.variant = p.variant.trimmed();
+    p.id = profileIdFor(p.exePath, p.variant);
     const QDateTime now = QDateTime::currentDateTime();
     if (!p.created.isValid())
         p.created = now;
@@ -191,9 +192,23 @@ ImportResult importProfiles(ProfileStore& store, const QByteArray& document, boo
         }
         ++(exists ? r.replaced : r.imported);
         if (!QFileInfo::exists(resolveCurrentExecutable(p->exePath)))
-            r.missingPrograms << p->name;
+            r.missingPrograms << displayName(*p);
     }
     return r;
+}
+
+std::optional<AppProfile> newVariant(const AppProfile& base, const QString& variantName)
+{
+    const QString v = variantName.trimmed();
+    if (v.isEmpty())
+        return std::nullopt;
+    AppProfile p = base;
+    p.variant = v;
+    p.id = profileIdFor(p.exePath, v);
+    p.appliedValue.clear();
+    p.lastVerification.reset();
+    p.created = p.modified = QDateTime();
+    return p;
 }
 
 AppProfile newProfile(const QString& exePath, const QString& name)

@@ -70,6 +70,18 @@ ApplyResult applyProfile(AppProfile& profile, pref::PreferenceManager& manager, 
         return r;
     }
     const ModeCapability cap = assessMode(profile, profile.mode, inputs);
+    if (!profile.variant.isEmpty()) {
+        // One Windows value per executable, owned by the main profile: a variant never writes or removes it.
+        r.storedValue = manager.rawValue(r.exePath).value_or(QString());
+        profile.appliedValue.clear();
+        r.ok = true;
+        r.message = QStringLiteral("Variant saved; no Windows setting changed (the program's Windows GPU preference belongs to its main "
+                                   "profile). %1").arg(usesGpuPlaceholders(profile.arguments)
+                                       ? QStringLiteral("The GPU is passed in the launch arguments when GPU Fusion starts it.")
+                                       : QStringLiteral("Without a GPU option in the arguments (or the SDK), the program uses its default GPU."));
+        qCInfo(lcPrefs).noquote() << "Profile" << displayName(profile) << modeKey(profile.mode) << ":" << r.message;
+        return r;
+    }
     const GpuPreference value = cap.write.value_or(GpuPreference::NotSet); // unjustified -> no Windows value
     const pref::ChangeResult change = manager.current(r.exePath) == value && (value != GpuPreference::NotSet || !manager.rawValue(r.exePath))
         ? pref::ChangeResult{ true, {}, std::nullopt }

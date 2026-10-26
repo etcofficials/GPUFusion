@@ -84,7 +84,7 @@ std::optional<ProfileVerification> ProfileVerification::fromJson(const QJsonObje
 
 QJsonObject AppProfile::toJson() const
 {
-    QJsonObject o{ { "schemaVersion", 1 }, { "id", id }, { "name", name }, { "exePath", exePath }, { "arguments", arguments },
+    QJsonObject o{ { "schemaVersion", 1 }, { "id", id }, { "name", name }, { "variant", variant }, { "exePath", exePath }, { "arguments", arguments },
                    { "mode", modeKey(mode) }, { "shareGpuChoiceWithApp", shareGpuChoiceWithApp }, { "appliedValue", appliedValue },
                    { "created", created.toString(Qt::ISODateWithMs) }, { "modified", modified.toString(Qt::ISODateWithMs) } };
     if (lastVerification)
@@ -99,7 +99,8 @@ std::optional<AppProfile> AppProfile::fromJson(const QJsonObject& o)
         return std::nullopt;
     AppProfile p;
     p.exePath = exe;
-    p.id = profileIdFor(exe); // derived, so a hand-edited id cannot point at another program
+    p.variant = o.value(QLatin1StringView("variant")).toString().trimmed();
+    p.id = profileIdFor(exe, p.variant); // derived, so a hand-edited id cannot point at another program
     p.name = o.value(QLatin1StringView("name")).toString(QFileInfo(exe).completeBaseName());
     p.arguments = o.value(QLatin1StringView("arguments")).toString();
     p.mode = modeFromKey(o.value(QLatin1StringView("mode")).toString()).value_or(GpuMode::Automatic);
@@ -117,10 +118,20 @@ QString normalizedPath(const QString& exePath)
     return QDir::toNativeSeparators(QDir::cleanPath(QFileInfo(exePath).absoluteFilePath())).toLower();
 }
 
-QString profileIdFor(const QString& exePath)
+QString profileIdFor(const QString& exePath, const QString& variant)
 {
     const QByteArray h = QCryptographicHash::hash(normalizedPath(exePath).toUtf8(), QCryptographicHash::Sha1).toHex();
-    return QStringLiteral("%1-%2").arg(QFileInfo(exePath).completeBaseName().toLower().left(32), QString::fromLatin1(h.left(12)));
+    const QString base = QStringLiteral("%1-%2").arg(QFileInfo(exePath).completeBaseName().toLower().left(32), QString::fromLatin1(h.left(12)));
+    const QString v = variant.trimmed();
+    if (v.isEmpty())
+        return base; // unchanged for main profiles, so existing profiles keep their ids
+    const QByteArray vh = QCryptographicHash::hash(v.toLower().toUtf8(), QCryptographicHash::Sha1).toHex();
+    return QStringLiteral("%1-v%2").arg(base, QString::fromLatin1(vh.left(8)));
+}
+
+QString displayName(const AppProfile& profile)
+{
+    return profile.variant.isEmpty() ? profile.name : QStringLiteral("%1 — %2").arg(profile.name, profile.variant);
 }
 
 // ---- capabilities --------------------------------------------------------------------------------
@@ -147,6 +158,11 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
         c.status = ModeStatus::Verified;
         c.summary = QStringLiteral("Windows decides which GPU the program uses.");
         c.reasons = plan.reasons;
+        if (!profile.variant.isEmpty()) { // the Windows value belongs to the program's main profile
+            c.write.reset();
+            c.mechanism = QStringLiteral("None: the program uses its default GPU (Windows' per-app value, if any, is the main profile's)");
+            c.summary = QStringLiteral("The program chooses as it would by itself.");
+        }
         if (verifiedThisMode && !lv->headline.isEmpty())
             c.reasons.prepend(QStringLiteral("Last verification (%1): %2").arg(lv->time.toString(QStringLiteral("yyyy-MM-dd HH:mm")), lv->headline));
         return c;
@@ -193,7 +209,19 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
         c.reasons << QStringLiteral("Applies only when the program is started through GPU Fusion (Launch, Verify, a shortcut made with "
                                     "\"Create shortcut…\", or --launch-profile); started any other way, it uses its default GPU.");
     };
-    switch (plan.enforcement) {
+    // Variants never use Windows' per-app value: there is one per executable, owned by the main profile.
+    const bool variantOnWindows = !profile.variant.isEmpty() && (plan.enforcement == Enforcement::Verified || plan.enforcement == Enforcement::Expected);
+    if (variantOnWindows && usesGpuPlaceholders(profile.arguments) && plan.target) {
+        argumentsMechanism(QStringLiteral("Windows stores one GPU preference per program (the main profile's);"));
+    } else if (variantOnWindows) {
+        c.write.reset();
+        c.status = ModeStatus::NeedsAppSupport;
+        c.mechanism = QStringLiteral("The program's own GPU option (GPU placeholder in the launch arguments) or the SDK");
+        c.summary = QStringLiteral("Windows stores only one GPU preference per program, and it belongs to the main profile. A variant "
+                                   "reaches %1 through the program's own GPU option or the GPU Fusion SDK.").arg(target);
+        c.reasons << QStringLiteral("Put the program's GPU option in this variant's launch arguments with a GPU placeholder (e.g. "
+                                    "{luid_pair}, {dxgi_index}).");
+    } else switch (plan.enforcement) {
     case Enforcement::Verified:
         c.status = ModeStatus::Verified;
         c.mechanism = QStringLiteral("Windows per-app preference (%1)").arg(pref::gpuPreferenceText(*plan.write));

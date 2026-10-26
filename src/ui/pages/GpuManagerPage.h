@@ -52,6 +52,8 @@ public:
     void setArguments(const QString& arguments);
     // Writes a shortcut for the selected (saved) profile to `path` (.lnk). For tests and the button.
     bool createShortcut(const QString& path);
+    // A variant of the selected program (own mode and arguments), selected afterwards.
+    bool addVariant(const QString& variantName);
     // Profile backup / transfer (the buttons ask for the file; tests call these directly).
     bool exportTo(const QString& path);
     bool importFrom(const QString& path, bool replace);
@@ -80,6 +82,7 @@ private:
     AppContext& m_context;
     QListWidget* m_list;
     QPushButton* m_remove;
+    QPushButton* m_addVariant;
     QLabel* m_header;
     QButtonGroup* m_modes;
     QRadioButton* m_modeButtons[4];

@@ -94,6 +94,9 @@ int main(int argc, char* argv[])
     const QCommandLineOption closeRunningOpt(QStringLiteral("close-running"),
         QStringLiteral("With --launch-profile / --verify-profile: if the program is running, ask it to close first (like its close button; "
                        "never forced). Exit code 10 if it does not close."));
+    const QCommandLineOption variantOpt(QStringLiteral("variant"),
+        QStringLiteral("With --apply-profile / --launch-profile / --verify-profile / --create-shortcut <exe>: the profile variant <name> "
+                       "(another profile for the same program; it never changes the program's Windows GPU preference)."), QStringLiteral("name"));
     const QCommandLineOption exportProfilesOpt(QStringLiteral("export-profiles"),
         QStringLiteral("Write every GPU profile to <file> (JSON, for backup or another PC) and exit."), QStringLiteral("file"));
     const QCommandLineOption importProfilesOpt(QStringLiteral("import-profiles"),
@@ -128,7 +131,7 @@ int main(int argc, char* argv[])
         QStringLiteral("With --dispatch: measure the batch <n> times on each GPU alone and on all chosen GPUs, check outputs and report "
                        "whether all GPUs together are significantly faster."), QStringLiteral("n"));
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
-                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, exportProfilesOpt, importProfilesOpt, replaceExistingOpt, interactiveOpt, createShortcutOpt, shortcutDirOpt, launchProfileOpt, verifyProfileOpt,
+                     verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, variantOpt, exportProfilesOpt, importProfilesOpt, replaceExistingOpt, interactiveOpt, createShortcutOpt, shortcutDirOpt, launchProfileOpt, verifyProfileOpt,
                      dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
     cli.process(app);
 
@@ -300,7 +303,11 @@ int main(int argc, char* argv[])
                     QApplication::exit(2);
                     return;
                 }
-                gf::profiles::AppProfile p = profileStore.find(exe).value_or(gf::profiles::newProfile(exe));
+                const QString variant = cli.value(variantOpt).trimmed();
+                gf::profiles::AppProfile p = profileStore.find(gf::profiles::profileIdFor(exe, variant))
+                                                 .value_or(variant.isEmpty() ? gf::profiles::newProfile(exe)
+                                                                             : *gf::profiles::newVariant(profileStore.find(exe).value_or(
+                                                                                   gf::profiles::newProfile(exe)), variant));
                 p.mode = *mode;
                 if (cli.isSet(profileArgsOpt))
                     p.arguments = cli.value(profileArgsOpt);
@@ -315,7 +322,7 @@ int main(int argc, char* argv[])
                 const gf::profiles::CapabilityInputs in = gf::profiles::capabilityInputs(exe, detection, preferences.lastVerification());
                 const gf::profiles::ApplyResult r = gf::profiles::applyProfile(p, preferences.manager(), in);
                 if (r.ok && profileStore.save(p, &error)) {
-                    qCInfo(lcApp).noquote() << "Profile" << p.id << "(" << p.name << ")" << gf::profiles::modeKey(p.mode) << ":" << r.message;
+                    qCInfo(lcApp).noquote() << "Profile" << p.id << "(" << gf::profiles::displayName(p) << ")" << gf::profiles::modeKey(p.mode) << ":" << r.message;
                     exitCode = 0;
                 } else {
                     qCCritical(lcApp).noquote() << "Profile not applied:" << (r.ok ? error : r.message);
@@ -329,7 +336,9 @@ int main(int argc, char* argv[])
                 };
                 const QString key = cli.isSet(createShortcutOpt) ? cli.value(createShortcutOpt)
                                   : cli.isSet(launchProfileOpt)  ? cli.value(launchProfileOpt) : cli.value(verifyProfileOpt);
-                auto p = profileStore.find(key);
+                const bool isPath = key.contains(u'\\') || key.contains(u'/');
+                auto p = profileStore.find(isPath && cli.isSet(variantOpt)
+                                               ? gf::profiles::profileIdFor(QFileInfo(key).absoluteFilePath(), cli.value(variantOpt)) : key);
                 if (!p) {
                     qCCritical(lcApp).noquote() << "No GPU profile for" << key;
                     tell(QMessageBox::Warning, QStringLiteral("There is no GPU profile for %1 (any more). Open GPU Fusion's GPU Manager to "
@@ -383,7 +392,7 @@ int main(int argc, char* argv[])
                 }
                 if (cli.isSet(launchProfileOpt)) {
                     const auto pid = gf::profiles::launchProfile(*p, gpus, &error);
-                    qCInfo(lcApp).noquote() << "Launch profile" << p->name << (pid ? QStringLiteral("pid %1").arg(*pid) : error);
+                    qCInfo(lcApp).noquote() << "Launch profile" << gf::profiles::displayName(*p) << (pid ? QStringLiteral("pid %1").arg(*pid) : error);
                     if (!pid)
                         tell(QMessageBox::Warning, QStringLiteral("%1 could not be started: %2").arg(p->name, error));
                     exitCode = pid ? 0 : 9;
@@ -392,7 +401,7 @@ int main(int argc, char* argv[])
                     const gf::mon::UsageVerdict v = gf::profiles::verifyProfile(*p, detection, preferences.manager().rawValue(
                                                                                     gf::profiles::resolveCurrentExecutable(p->exePath)), seconds);
                     profileStore.save(*p, &error);
-                    qCInfo(lcApp).noquote() << "Verify profile" << p->name << gf::profiles::modeKey(p->mode) << ":" << v.headline;
+                    qCInfo(lcApp).noquote() << "Verify profile" << gf::profiles::displayName(*p) << gf::profiles::modeKey(p->mode) << ":" << v.headline;
                     for (const QString& s : p->lastVerification->stages)
                         qCInfo(lcApp).noquote() << "    " << s;
                     for (const QString& d : v.details)

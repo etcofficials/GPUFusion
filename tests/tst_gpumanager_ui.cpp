@@ -214,6 +214,17 @@ private Q_SLOTS:
         qInfo().noquote() << page.resultText();
         const auto saved = store.find(probeguard::probePath());
         QVERIFY2(saved->lastVerification && saved->lastVerification->confirmed, qPrintable(page.resultText()));
+
+        // A variant of the same program: listed separately, selected, and never touches the Windows value.
+        QVERIFY(page.addVariant(QStringLiteral("second GPU")));
+        QCOMPARE(page.findChild<QListWidget*>()->count(), 2);
+        QVERIFY(page.findChild<QListWidget*>()->currentItem()->text().contains(QStringLiteral("Probe — second GPU")));
+        QVERIFY(!page.addVariant(QStringLiteral("Second GPU")));                // same name (case-insensitive)
+        page.selectMode(profiles::GpuMode::Discrete);
+        page.applySelected(true);                                                // no confirmation: nothing changes in Windows
+        QVERIFY(page.resultText().contains(QStringLiteral("no Windows setting changed")));
+        QVERIFY(!pref::findValueName(m_store, probeguard::probePath()).has_value());
+        QCOMPARE(store.list().size(), 2);
     }
 
     // The program is already running when "Verify on this PC" is used: the page asks it to close first

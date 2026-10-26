@@ -90,7 +90,7 @@ add_dependencies(tst_appverify_live GPUFusionProbe GPUFusion)
 set_tests_properties(tst_appverify_live PROPERTIES FIXTURES_REQUIRED probe_preference RUN_SERIAL TRUE TIMEOUT 180)
 # Generic profiles in every mode with the probe as an SDK-integrated program (probe preference only).
 gpufusion_add_test(tst_profiles_live tst_profiles_live.cpp LABELS hardware registry)
-target_link_libraries(tst_profiles_live PRIVATE gpufusion_profiles)
+target_link_libraries(tst_profiles_live PRIVATE gpufusion_profiles gpufusion_workloads)
 add_dependencies(tst_profiles_live GPUFusionProbe)
 set_tests_properties(tst_profiles_live PROPERTIES FIXTURES_REQUIRED probe_preference RUN_SERIAL TRUE TIMEOUT 240)
 # Asks the probe (only the probe) to close; serial, so it never touches probes of other tests.

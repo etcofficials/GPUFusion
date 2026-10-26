@@ -7,12 +7,14 @@
 #include "platform/windows/RegistryPreferenceStore.h"
 #include "profiles/AppDiscovery.h"
 #include "profiles/KnownOptions.h"
+#include "workloads/VideoDecode.h"
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
 
 #include "ProbePreferenceGuard.h"
 
 #include <QProcess>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
@@ -194,6 +196,59 @@ const u=g.getUniformLocation(p,'t');let t=0;(function f(){g.uniform1f(u,t+=.02);
         closeBrowser();
         print(automatic);
         QCOMPARE(automatic.outcome, mon::UsageOutcome::Observed);
+    }
+
+    // Two variants of one real program on two GPUs: FFmpeg (if installed at G:\DevTools\ffmpeg or on
+    // PATH) decoding a synthetic clip with its known GPU option — "Intel" in Integrated mode, "NVIDIA"
+    // in Discrete mode. Variants never touch Windows' per-app value, so none may appear for FFmpeg.
+    void variantsOfOneProgramUseDifferentGpus()
+    {
+        if (!m_hasIntegrated || !m_hasDiscrete)
+            QSKIP("Needs an integrated and a discrete GPU");
+        QString ffmpeg = QStringLiteral("G:\\DevTools\\ffmpeg\\bin\\ffmpeg.exe");
+        if (!QFileInfo::exists(ffmpeg))
+            ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+        if (ffmpeg.isEmpty())
+            QSKIP("FFmpeg is not installed");
+        ffmpeg = QDir::toNativeSeparators(ffmpeg);
+
+        QTemporaryDir dir(QDir(QDir::tempPath()).filePath(QStringLiteral("gfvariant-XXXXXX")));
+        QVERIFY(dir.isValid());
+        work::ComScope com;
+        QString error;
+        QVERIFY2(work::startMediaFoundation(&error), qPrintable(error));
+        work::TestClipSpec spec;
+        spec.width = 640;
+        spec.height = 352;
+        spec.frames = 240;
+        spec.bitrate = 2'000'000;
+        const QString clip = work::ensureTestClip(dir.path(), spec, &error);
+        QVERIFY2(!clip.isEmpty(), qPrintable(error));
+        const auto known = knownOptionFor(ffmpeg, builtInKnownOptions());
+        QVERIFY(known.has_value());
+        auto stopFfmpeg = [&] { // only FFmpeg processes decoding this test's clip
+            QProcess::execute(QStringLiteral("powershell"), { QStringLiteral("-NoProfile"), QStringLiteral("-Command"),
+                QStringLiteral("Get-CimInstance Win32_Process -Filter \"Name='ffmpeg.exe'\" | Where-Object { $_.CommandLine -like '*%1*' } | "
+                               "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }").arg(dir.path().section(u'/', -1)) });
+        };
+        const bool hadValue = m_manager->rawValue(ffmpeg).has_value();
+
+        AppProfile main = newProfile(ffmpeg);
+        for (const auto& [name, mode, gpuName] : { std::tuple{ QStringLiteral("Intel"), GpuMode::Integrated, QStringLiteral("Intel") },
+                                                   std::tuple{ QStringLiteral("NVIDIA"), GpuMode::Discrete, QString() } }) {
+            AppProfile v = *newVariant(main, name);
+            v.mode = mode;
+            v.arguments = withKnownOption(QStringLiteral("-hide_banner -loglevel error -stream_loop 200 -i \"%1\" -f null -")
+                                              .arg(QDir::toNativeSeparators(clip)), *known);
+            QVERIFY(applyProfile(v, *m_manager, m_inputs).ok);
+            const mon::UsageVerdict verdict = verifyProfile(v, m_detection, m_manager->rawValue(ffmpeg), 8);
+            stopFfmpeg();
+            print(verdict);
+            QVERIFY2(v.lastVerification->confirmed, qPrintable(displayName(v) + QStringLiteral(": ") + verdict.headline));
+            if (!gpuName.isEmpty())
+                QVERIFY(verdict.headline.contains(gpuName));
+        }
+        QCOMPARE(m_manager->rawValue(ffmpeg).has_value(), hadValue); // no Windows value written or removed
     }
 
     void discoveryFindsInstalledPrograms()

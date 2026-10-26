@@ -525,6 +525,69 @@ private Q_SLOTS:
         QVERIFY(suggestedOptionFor(edgeDir + QStringLiteral("/msedge.exe"), builtIn)->evidence.startsWith(QStringLiteral("Verified")));
     }
 
+    // ---- variants -----------------------------------------------------------------------------------
+    void variantsAreSeparateProfilesOfOneProgram()
+    {
+        const QString exe = QStringLiteral("C:\\Tools\\ffmpeg.exe");
+        const QString mainId = profileIdFor(exe);
+        QCOMPARE(profileIdFor(exe, QString()), mainId);                          // main ids unchanged
+        QVERIFY(profileIdFor(exe, QStringLiteral("Intel")) != mainId);
+        QCOMPARE(profileIdFor(exe, QStringLiteral("Intel")), profileIdFor(exe, QStringLiteral(" intel ")));
+        QVERIFY(profileIdFor(exe, QStringLiteral("Intel")) != profileIdFor(exe, QStringLiteral("NVIDIA")));
+
+        AppProfile base = newProfile(exe);
+        base.mode = GpuMode::Discrete;
+        base.appliedValue = QStringLiteral("GpuPreference=2;");
+        QVERIFY(!newVariant(base, QStringLiteral("  ")).has_value());
+        AppProfile v = *newVariant(base, QStringLiteral("Intel"));
+        QCOMPARE(v.variant, QStringLiteral("Intel"));
+        QVERIFY(v.appliedValue.isEmpty());
+        QCOMPARE(displayName(v), QStringLiteral("ffmpeg — Intel"));
+        const auto back = AppProfile::fromJson(v.toJson());
+        QCOMPARE(back->variant, QStringLiteral("Intel"));
+        QCOMPARE(back->id, v.id);
+        QVERIFY(shortcutName(v).startsWith(QStringLiteral("ffmpeg — Intel (")));
+
+        ProfileStore store(m_dir.filePath(QStringLiteral("variants")));
+        QString error;
+        QVERIFY(store.save(base, &error));
+        QVERIFY(store.save(v, &error));
+        QCOMPARE(store.list().size(), 2);
+        QVERIFY(store.find(exe)->variant.isEmpty());                              // the path finds the main profile
+        QCOMPARE(store.find(v.id)->variant, QStringLiteral("Intel"));
+    }
+
+    // Windows keeps one GPU preference per executable: a variant never uses, writes or removes it.
+    void variantsNeverUseTheWindowsValue()
+    {
+        const CapabilityInputs in = referenceInputs();
+        AppProfile v = *newVariant(newProfile(QStringLiteral("C:\\Tools\\tool.exe")), QStringLiteral("second"));
+        const ModeCapability discrete = assessMode(v, GpuMode::Discrete, in);   // Verified via Windows for the main profile
+        QCOMPARE(discrete.status, ModeStatus::NeedsAppSupport);
+        QVERIFY(!discrete.write.has_value());
+        QVERIFY(discrete.summary.contains(QStringLiteral("one GPU preference per program")));
+        QVERIFY(!assessMode(v, GpuMode::Automatic, in).write.has_value());      // not even "remove"
+        v.arguments = QStringLiteral("--gpu {dxgi_index}");
+        QCOMPARE(assessMode(v, GpuMode::Discrete, in).status, ModeStatus::Expected);
+        QCOMPARE(assessMode(v, GpuMode::Integrated, in).status, ModeStatus::Expected);
+        QVERIFY(!assessMode(v, GpuMode::Discrete, in).write.has_value());
+
+        const QString exe = QDir::toNativeSeparators(m_dir.filePath(QStringLiteral("variantapply/tool.exe")));
+        touch(exe);
+        FakeStore registry;
+        registry.values[exe] = QStringLiteral("GpuPreference=2;");               // the main profile's value
+        ChangeJournal journal(m_dir.filePath(QStringLiteral("variant-journal.json")));
+        PreferenceManager manager(registry, journal);
+        AppProfile real = *newVariant(newProfile(exe), QStringLiteral("Intel"));
+        for (GpuMode m : { GpuMode::Integrated, GpuMode::Automatic, GpuMode::Discrete }) {
+            real.mode = m;
+            const ApplyResult r = applyProfile(real, manager, in);
+            QVERIFY2(r.ok, qPrintable(r.message));
+            QVERIFY(r.message.contains(QStringLiteral("no Windows setting changed")));
+            QCOMPARE(registry.values[exe], QStringLiteral("GpuPreference=2;"));    // untouched
+        }
+    }
+
     // ---- shortcuts ----------------------------------------------------------------------------------
     void shortcutsStartTheProgramThroughItsProfile()
     {

@@ -31,6 +31,9 @@ QString resolveCurrentExecutable(const QString& exePath);
 
 // A profile for an executable the user picked (not saved).
 AppProfile newProfile(const QString& exePath, const QString& name = {});
+// A variant of `base` (same program, own mode and arguments), starting as a copy of it; not saved.
+// Returns nullopt for an empty name.
+std::optional<AppProfile> newVariant(const AppProfile& base, const QString& variantName);
 
 // ---- backup / transfer ------------------------------------------------------------------------------
 // One JSON document with every profile: { "gpuFusionProfiles": 1, "exported": ..., "profiles": [...] }.

@@ -43,6 +43,7 @@ struct ProfileVerification {
 struct AppProfile {
     QString id;                              // derived from the executable path (see profileIdFor)
     QString name;                            // display name
+    QString variant;                         // empty: the program's main profile; else e.g. "Intel video" (see below)
     QString exePath;                         // absolute, native separators
     QString arguments;                       // optional launch arguments, passed to the program as typed
     GpuMode mode = GpuMode::Automatic;
@@ -55,8 +56,12 @@ struct AppProfile {
     static std::optional<AppProfile> fromJson(const QJsonObject& o);
 };
 
-// Stable id for an executable: case-insensitive, separator-insensitive hash of its absolute path.
-QString profileIdFor(const QString& exePath);
+// Stable id for an executable (and variant): case-insensitive, separator-insensitive hash of its absolute
+// path, plus the variant name. A program can have one main profile and any number of variants: Windows
+// stores only one GPU preference per executable, so only the main profile ever writes it; variants reach
+// their GPU through the program's own option (GPU placeholders) or the SDK.
+QString profileIdFor(const QString& exePath, const QString& variant = {});
+QString displayName(const AppProfile& profile); // "name" or "name — variant"
 QString normalizedPath(const QString& exePath);
 
 // ---- capability assessment ------------------------------------------------------------------------
