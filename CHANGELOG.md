@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.11.1 — 2026-10-26
+
+Fixes from an independent code review of everything since 1.1. All ten findings were confirmed and
+fixed.
+
+- **Job runner could destroy input files.** It deletes a job's output file before the job runs, and
+  with an output name equal to the input name in the same folder (e.g. pattern `{name}`) that was the
+  input. Such jobs, and jobs sharing one output file, are now refused before anything runs.
+- **Job runner could leave jobs unrun.** The rule that keeps a slow GPU off the last jobs compared
+  against GPUs that had already stopped taking jobs. Now the last active GPU always finishes the queue.
+- **Automatic backup** no longer writes a backup while a profile file cannot be read. That backup
+  would lack the damaged profile, and after enough changes the rotation would delete every backup
+  that still had it.
+- **Verification:** a program that rendered on the requested GPU stays *confirmed* when the other GPU
+  only shows work of unknown type, which may be incidental. Before, such a Discrete profile was
+  marked "partly". A *Both GPUs* profile still counts that work as the second GPU.
+- **Intel GPU monitoring:** a process whose statistics Windows refuses is now reported as "could not be
+  inspected" instead of being counted as idle.
+- **GPU Manager:** stays disabled while it waits for a program to close (a hardware re-detect used to
+  re-enable the buttons). It no longer re-reads the profile file on every keystroke.
+- **Applications page:** re-reads profiles only when they or the GPUs changed, not every 10 s.
+- **Placeholders** are expanded in one pass by a single shared implementation, so a file name
+  containing `{job}` is no longer expanded twice.
+
 ## 1.11.0 — 2026-10-26
 
 - **Automatic profile backup.** In Settings → *GPU profiles*, choose a folder, ideally on another

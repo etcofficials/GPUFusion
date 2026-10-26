@@ -159,6 +159,9 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 
 ## Tests at release
 
+1.11.1: 34 CTest entries, 240 cases, all passing with reference-machine expectations; fixes for the 10
+findings of an independent code review (2026-10-26).
+
 1.11.0: 34 CTest entries, 237 cases, all passing with reference-machine expectations (2026-10-26).
 
 1.10.1: 34 CTest entries, 235 cases, all passing (release, reference-machine expectations); full suite

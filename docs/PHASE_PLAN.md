@@ -292,6 +292,15 @@
 - Optional backup folder (Settings): an export after every profile change, deduplicated, rotated,
   batched for imports, with a warning when the folder is on the same (failing) drive. Off by default.
 
+## 1.14 — independent code review, release 1.11.1 (2026-10-26)
+
+- A structured review of 34 commits / 90 files since 1.1 reported 10 candidates. All were verified as
+  real and fixed: two job-runner bugs (input files could be destroyed; jobs could be left unrun),
+  backup rotation losing damaged profiles, a verification regression, unreadable processes counted as
+  idle, a re-entrancy window in the GPU Manager, needless disk reads, duplicated and double-expanding
+  placeholder code. Regression tests were added where deterministic.
+- Storage policy re-verified: no GPU Fusion files on C: apart from the requested desktop shortcut.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.
