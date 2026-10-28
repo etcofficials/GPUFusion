@@ -197,6 +197,27 @@ private Q_SLOTS:
         QCOMPARE(b.verdict, Difference::Verdict::Slower);
         QVERIFY2(b.headline.startsWith(QStringLiteral("The adaptive scheduler was slower")), qPrintable(b.headline));
         QCOMPARE(labKind(Session{}), QStringLiteral("split"));
+
+        // Since 1.12.1 each GPU alone is "lab.adaptive.single" (sessions of 1.12.0, above, used
+        // "lab.split.single"): same analysis, and never counted as a policy.
+        Session renamed = s;
+        renamed.results[0].testId = renamed.results[1].testId = QStringLiteral("lab.adaptive.single");
+        const LabAnalysis c = analyzeAdaptive(renamed);
+        QCOMPARE(c.reference->name, GT + QStringLiteral(" alone"));
+        QCOMPARE(c.headline, a.headline);
+        QVERIFY(!c.findings.join(u'\n').contains(QStringLiteral("“NVIDIA GeForce GT 730 alone”:")));
+
+        // A PC with one GPU: only its single run; filed as the adaptive experiment, and said plainly.
+        Session one;
+        one.results << renamed.results[0];
+        QCOMPARE(labKind(one), QStringLiteral("adaptive"));
+        const LabAnalysis d = analyzeAdaptive(one);
+        QVERIFY2(d.headline.startsWith(QStringLiteral("Only one GPU could run the workload, so there was nothing to divide")), qPrintable(d.headline));
+
+        // A real helper failure is reported in the findings.
+        Session failed = renamed;
+        failed.results[2].notes << HD + QStringLiteral(" failed a batch (The GPU stopped responding); the primary re-ran its rows.");
+        QVERIFY(analyzeAdaptive(failed).findings.join(u'\n').contains(QStringLiteral("failed a batch (The GPU stopped responding)")));
     }
 
     void decodeOnePerGpuSlowerThanBestDevice()

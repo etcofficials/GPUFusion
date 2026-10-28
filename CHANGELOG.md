@@ -1,6 +1,30 @@
 # Changelog
 
-## 1.12.0 — 2026-10-28
+## 1.12.1 — 2026-10-28
+
+Fixes from a review of 1.12.0. Nothing here changes how the scheduler divides work.
+
+- **SDK demo: the transfer time was wrong.** `GPUFusionSplitDemo` reported as "transfer" the whole wait
+  for the GPU: about 50 ms of a 53 ms run. It now times the copy to system memory with GPU
+  timestamp queries, without an extra wait. Measured at standard size: about 3 ms per run for the
+  GT 730 and 0.9 ms for the HD 2000, with the same speed as before (alternating runs of the 1.12.0 and
+  1.12.1 demos: 53.5–54.1 ms against 53.4–54.6 ms). A first fix with a second wait was 3–4 % slower
+  and was not kept. The JSON says per adapter whether its copy was timed on the GPU
+  (`copyTimedOnGpu`).
+- **SDK: an unreadable `GPUFUSION_ENV_VERSION`** (for example `abc` or `0`) counted as a supported
+  format. It is now an unknown format, so the program uses the default adapter.
+- **SDK: a LUID listed twice** in `GPUFUSION_ADAPTERS` gave two devices on the same GPU. `adapters()`
+  now lists each adapter once.
+- **Workload Lab, adaptive experiment:**
+  - Each GPU alone is now recorded as `lab.adaptive.single`. Before, on a PC with one GPU, an
+    adaptive session looked like a split-compute session and was shown in the wrong panel. Sessions
+    saved by 1.12.0 still read correctly.
+  - On one GPU, the headline says there was nothing to divide.
+  - A helper GPU's own error is now shown in the findings; before, only "failed a batch" was.
+  - The re-run rows are counted per helper.
+  - Helper threads no longer read the primary's error text while the primary may write it.
+- The demo's JSON escapes control characters.
+
 
 Real multi-GPU work distribution, and honest reporting of "Both GPUs". See
 [docs/MULTI_GPU_SCHEDULER.md](docs/MULTI_GPU_SCHEDULER.md) for how it works and every measurement.

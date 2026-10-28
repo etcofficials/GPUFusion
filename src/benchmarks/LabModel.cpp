@@ -173,9 +173,15 @@ QString labKind(const Session& session)
 }
 
 namespace {
+// Each GPU alone in the adaptive experiment ("lab.split.single" in sessions saved by 1.12.0).
+bool isAdaptiveSingle(const BenchmarkResult& r)
+{
+    return r.testId == QLatin1StringView("lab.adaptive.single") || r.testId == QLatin1StringView("lab.split.single");
+}
 bool isPolicyRow(const BenchmarkResult& r)
 {
-    return r.testId.startsWith(QLatin1StringView("lab.adaptive.")) && r.testId != QLatin1StringView("lab.adaptive.fallback");
+    return r.testId.startsWith(QLatin1StringView("lab.adaptive.")) && r.testId != QLatin1StringView("lab.adaptive.fallback")
+        && r.testId != QLatin1StringView("lab.adaptive.single");
 }
 } // namespace
 
@@ -184,7 +190,7 @@ LabAnalysis analyzeAdaptive(const Session& session)
     LabAnalysis a;
     QHash<QString, double> singleMs;
     for (const BenchmarkResult& r : session.results) {
-        if (r.testId != QLatin1StringView("lab.split.single") || !usable(r))
+        if (!isAdaptiveSingle(r) || !usable(r))
             continue;
         const QStringList w = workersOf(r);
         if (w.size() == 1)
@@ -195,6 +201,7 @@ LabAnalysis analyzeAdaptive(const Session& session)
     if (a.reference)
         a.referenceLabel = a.reference->name;
 
+    bool anyMulti = false;
     for (const BenchmarkResult& r : session.results) {
         LabRow row;
         row.result = &r;
@@ -202,6 +209,7 @@ LabAnalysis analyzeAdaptive(const Session& session)
         const QStringList workers = workersOf(r);
         if (usable(r) && a.reference && !row.reference)
             row.vsReference = compareStats(r.duration, a.reference->duration);
+        anyMulti = anyMulti || workers.size() > 1;
         if (workers.size() > 1) {
             std::vector<double> times;
             for (const QString& w : workers)
@@ -244,7 +252,9 @@ LabAnalysis analyzeAdaptive(const Session& session)
         return a;
     }
     if (!best) {
-        a.headline = QStringLiteral("No adaptive run completed correctly, so the scheduler could not be evaluated.");
+        a.headline = anyMulti ? QStringLiteral("No adaptive run completed correctly, so the scheduler could not be evaluated.")
+                              : QStringLiteral("Only one GPU could run the workload, so there was nothing to divide: %1 took %2 ms.")
+                                    .arg(a.reference->name, ms(a.reference->duration.mean));
         return a;
     }
     const BenchmarkResult& b = *best->result;
@@ -272,7 +282,7 @@ LabAnalysis analyzeAdaptive(const Session& session)
                           .arg(ms(*best->idealMs), b.name).arg(100.0 * *best->idealMs / b.duration.mean, 0, 'f', 0);
     for (const LabRow& row : a.rows) {
         const BenchmarkResult& r = *row.result;
-        if (!r.testId.startsWith(QLatin1StringView("lab.adaptive.")) || !usable(r))
+        if (!r.testId.startsWith(QLatin1StringView("lab.adaptive.")) || isAdaptiveSingle(r) || !usable(r))
             continue;
         const QString vs = row.vsReference ? describeDifference(*row.vsReference) : QStringLiteral("not compared");
         if (!isPolicyRow(r)) {
@@ -289,7 +299,7 @@ LabAnalysis analyzeAdaptive(const Session& session)
             line += QStringLiteral(", GPU Fusion's CPU use %1 % of all cores").arg(r.cpuPercent.value, 0, 'f', 1);
         a.findings << line + u'.';
         for (const QString& note : r.notes) {
-            if (note.contains(QLatin1StringView("after the last run")))
+            if (note.contains(QLatin1StringView("after the last run")) || note.contains(QLatin1StringView("failed a batch (")))
                 a.findings << QStringLiteral("  %1").arg(note);
         }
     }

@@ -10,6 +10,7 @@
 
 #include <QDir>
 #include <QJsonArray>
+#include <QSet>
 
 #include <windows.h>
 #include <psapi.h>
@@ -386,7 +387,7 @@ Session runAdaptiveExperiment(const hw::DetectionResult& detection, const LabOpt
     const QString category = QStringLiteral("Workload Lab: adaptive multi-GPU scheduler");
     const QList<Gpu> gpus = usableGpus(detection);
     if (gpus.isEmpty()) {
-        session.results << failedResult(QStringLiteral("lab.split.single"), QStringLiteral("Adaptive split"), category,
+        session.results << failedResult(QStringLiteral("lab.adaptive.single"), QStringLiteral("Adaptive split"), category,
                                         QStringLiteral("No physical GPU with Direct3D 11 is available."));
         return session;
     }
@@ -448,6 +449,7 @@ Session runAdaptiveExperiment(const hw::DetectionResult& detection, const LabOpt
         const std::size_t n = std::size_t(order.size());
         gpufusion::Balancer balancer(n, policy.value_or(gpufusion::Policy::Conservative), kGranularity);
         int splitRuns = 0, iterations = 0;
+        QSet<QString> helperErrors; // real helper failures (not the fallback check's), shown in the notes
         gpufusion::Plan fixed; // single-GPU and fallback modes: the same plan every run
         fixed.granularity = kGranularity;
         fixed.enabled.assign(n, char(1));
@@ -462,7 +464,8 @@ Session runAdaptiveExperiment(const hw::DetectionResult& detection, const LabOpt
         loop.run(r, [&](RunSample& s, QString* error) {
             const gpufusion::Plan plan = policy ? balancer.plan(o.hash.height) : fixed;
             std::fill(image.begin(), image.end(), 0xDEADBEEFu); // missing rows cannot pass the check
-            QString workError;
+            // Each device's first error of this run; a device's slot is written only by its own thread.
+            std::vector<QString> batchErrors(n);
             const gpufusion::RunReport rep = gpufusion::run(o.hash.height, plan, [&](gpufusion::Batch& b) {
                 if (failHelper && b.device != 0)
                     return false;
@@ -470,14 +473,18 @@ Session runAdaptiveExperiment(const hw::DetectionResult& detection, const LabOpt
                 const QString e = devices[std::size_t(order[qsizetype(b.device)])]->computeInto(
                     o.hash, b.first, b.count, image.data() + std::size_t(b.first) * o.hash.width, &computeMs, &readbackMs);
                 b.transferMs = readbackMs;
-                if (!e.isEmpty() && workError.isEmpty() && b.device == 0)
-                    workError = e;
+                if (!e.isEmpty() && batchErrors[b.device].isEmpty())
+                    batchErrors[b.device] = e;
                 return e.isEmpty();
             }, balancer.unitsPerMs());
             if (policy)
                 balancer.record(plan, rep);
+            for (std::size_t d = 1; d < n; ++d) {
+                if (!batchErrors[d].isEmpty())
+                    helperErrors.insert(QStringLiteral("%1 failed a batch (%2); the primary re-ran its rows.").arg(labels[qsizetype(d)], batchErrors[d]));
+            }
             if (!rep.ok) {
-                *error = QString::fromStdString(rep.error) + (workError.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(workError));
+                *error = QString::fromStdString(rep.error) + (batchErrors[0].isEmpty() ? QString() : QStringLiteral(" (%1)").arg(batchErrors[0]));
                 return false;
             }
             s.durationMs = rep.wallMs;
@@ -492,8 +499,8 @@ Session runAdaptiveExperiment(const hw::DetectionResult& detection, const LabOpt
                 s.metrics.insert(k + QStringLiteral("computeMs"), dr.workMs - dr.transferMs);
                 s.metrics.insert(k + QStringLiteral("readbackMs"), dr.transferMs);
                 s.metrics.insert(k + QStringLiteral("batches"), dr.batches);
-                if (d > 0)
-                    s.metrics.insert(k + QStringLiteral("rerunRows"), rep.devices[0].rerunUnits);
+                if (d > 0) // this helper's rows from failed batches, which the primary re-ran
+                    s.metrics.insert(k + QStringLiteral("rerunRows"), dr.failedUnits);
                 scheduleMs += dr.scheduleMs;
             }
             s.metrics.insert(QStringLiteral("split"), plan.multi() ? 1.0 : 0.0);
@@ -525,12 +532,15 @@ Session runAdaptiveExperiment(const hw::DetectionResult& detection, const LabOpt
                 r.notes.insert(1, QStringLiteral("Primary alone, as learned by the Balancer: %1 ms per row; splits: %2 ms per row.")
                                       .arg(balancer.baselineMsPerUnit(), 0, 'f', 4).arg(balancer.splitMsPerUnit(), 0, 'f', 4));
         }
+        QStringList errors = helperErrors.values();
+        errors.sort();
+        r.notes << errors;
         session.results << r;
     };
 
     QList<double> singleMs;
     for (qsizetype i = 0; i < gpus.size(); ++i) {
-        runMode(QStringLiteral("lab.split.single"), QStringLiteral("%1 alone").arg(gpus[i].adapter->name()), { i }, std::nullopt, false);
+        runMode(QStringLiteral("lab.adaptive.single"), QStringLiteral("%1 alone").arg(gpus[i].adapter->name()), { i }, std::nullopt, false);
         const BenchmarkResult& r = session.results.last();
         singleMs << (r.status == Status::Completed && r.correct.value_or(false) ? r.duration.mean : 0.0);
     }

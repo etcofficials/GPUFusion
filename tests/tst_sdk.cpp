@@ -67,6 +67,13 @@ private Q_SLOTS:
         QVERIFY(!gpufusion::environmentSupported());
         QCOMPARE(gpufusion::mode(), gpufusion::Mode::NotLaunchedByGpuFusion);
         QVERIFY(gpufusion::requestedLuids().empty());
+        // A value that is not a version number is an unknown format too, not "version 0".
+        for (const wchar_t* bad : { L"abc", L"1x", L"-1", L"0" }) {
+            SetEnvironmentVariableW(L"GPUFUSION_ENV_VERSION", bad);
+            QCOMPARE(gpufusion::environmentVersion(), -1);
+            QVERIFY(!gpufusion::environmentSupported());
+            QCOMPARE(gpufusion::mode(), gpufusion::Mode::NotLaunchedByGpuFusion);
+        }
         QCOMPARE(gpufusion::kSdkVersion, 2);
     }
 
@@ -345,6 +352,9 @@ private Q_SLOTS:
 
         const std::wstring luid = gpufusion::detail::luidText(d.AdapterLuid);
         SetEnvironmentVariableW(L"GPUFUSION_ADAPTERS", (L"ffffffff_ffffffff," + luid).c_str()); // case-insensitive
+        a = gpufusion::adapters(factory.Get());
+        QCOMPARE(a.size(), size_t(1));
+        SetEnvironmentVariableW(L"GPUFUSION_ADAPTERS", (luid + L"," + luid).c_str()); // listed twice: one device, not two
         a = gpufusion::adapters(factory.Get());
         QCOMPARE(a.size(), size_t(1));
         QVERIFY(gpufusion::adapters(nullptr).empty());

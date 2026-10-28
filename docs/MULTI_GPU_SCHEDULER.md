@@ -56,6 +56,11 @@ Fixed during development, measured:
 
 - Waiting by spinning cost a whole CPU core. The SDK demo used 25 % of all cores; with the event
   wait it used 2.5 %, with the same times. [Test]
+- (1.12.1) The SDK demo reported as "transfer" the whole wait for the GPU: about 50 ms of a 53 ms
+  run. It now times the copy with GPU timestamp queries: about 3 ms per run for the GT 730 and
+  0.9 ms for the HD 2000 at standard size. A second wait before the copy would also have separated
+  them, but it made runs 3–4 % slower, so it was not kept. The Lab already timed the copy apart from
+  the shader work. [Test]
 - An exponential average let one disturbed run count as a miss, and the conservative policy once
   switched the Intel GPU off at the standard size although splits were about 12 % faster. Comparing
   the fastest recent runs fixed it. [Test]
@@ -87,7 +92,9 @@ included. Images were correct in every run. "Speed-up" is GPU Fusion's own verdi
   to 1.03× slower than the GT 730 alone.
 - **SDK demo.** `GPUFusionSplitDemo --all-adapters --size standard --runs 8`, conservative policy,
   5 repeats: 1.14–1.16× faster than the GT 730 alone, with Intel doing 12.6–13.5 % of the rows and
-  the demo using 1.9–2.5 % of all cores. In one further run, inside the test suite, the Balancer
+  the demo using 1.9–2.5 % of all cores. After the 1.12.1 fixes, 3 runs alternating with the 1.12.0
+  demo: 1.13–1.14× (1.12.0: 1.13–1.16×), Intel 13.6 % of the rows, 4–6 % of all cores for both
+  versions in that session. In one further run, inside the test suite, the Balancer
   ended with the Intel GPU switched off ("no significant difference", 1.00×). That run used the old
   exponential averaging, and its cause was not determined.
 - **Both profile.** The demo started from a Both profile (`--no-baselines`) was verified by GPU

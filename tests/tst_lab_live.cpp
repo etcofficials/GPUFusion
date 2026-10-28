@@ -204,9 +204,9 @@ private Q_SLOTS:
         for (const bench::BenchmarkResult& r : s.results) {
             QVERIFY2(r.status == bench::Status::Completed, qPrintable(r.name + u' ' + r.error));
             QVERIFY2(r.correct.value_or(false), qPrintable(r.name));
-            if (r.testId == QLatin1StringView("lab.split.single") && r.target.vendorId == 0x10DE)
+            if (r.testId == QLatin1StringView("lab.adaptive.single") && r.target.vendorId == 0x10DE)
                 singleGt = r.duration.mean;
-            if (!r.testId.startsWith(QLatin1StringView("lab.adaptive.")))
+            if (!r.testId.startsWith(QLatin1StringView("lab.adaptive.")) || r.testId == QLatin1StringView("lab.adaptive.single"))
                 continue;
             const QJsonArray workers = r.params.value(QLatin1StringView("workers")).toArray();
             QCOMPARE(workers.size(), 2);

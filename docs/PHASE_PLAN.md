@@ -301,6 +301,26 @@
   placeholder code. Regression tests were added where deterministic.
 - Storage policy re-verified: no GPU Fusion files on C: apart from the requested desktop shortcut.
 
+## 1.15 — adaptive multi-GPU scheduler, release 1.12.0 (2026-10-28)
+
+- Honest "Both GPUs (SDK programs)": live check, verification and launch messages no longer show ✓
+  for one GPU. SDK 2 with a lock-free, NVIDIA-first scheduler and a Balancer that measures and
+  switches the helper off when it does not pay. Workload Lab experiment and `GPUFusionSplitDemo`.
+  Measured 1.14× at standard and heavy size; see [MULTI_GPU_SCHEDULER.md](MULTI_GPU_SCHEDULER.md).
+
+## 1.16 — review of 1.12.0, release 1.12.1 (2026-10-28)
+
+- A review of the 1.12.0 changes, mainly the SDK and the scheduler. The scheduler's concurrency
+  (the atomic range, exactly-once accounting, the join before the fallback) held up. Fixed:
+  - the demo's transfer time, which included the GPU work;
+  - unreadable format versions;
+  - duplicate adapters;
+  - how adaptive sessions are filed on one GPU;
+  - helper errors not being shown;
+  - a data race on an error string.
+- Checked and not a defect: a per-process GPU listed twice cannot give a false "✓ Both GPUs active",
+  because the monitor keeps one entry per GPU per process.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

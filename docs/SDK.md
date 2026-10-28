@@ -36,7 +36,8 @@ When GPU Fusion starts a program from its profile (GPU Manager → *Launch* / *V
 
 LUIDs are valid only until the next restart, so GPU Fusion passes them fresh at every launch. A
 profile can switch this off with "Tell the program which GPU to use…". If a newer GPU Fusion sets a
-format version this SDK does not know, `environmentSupported()` is false. `mode()` and
+format version this SDK does not know, or the value is not a version number,
+`environmentSupported()` is false. `mode()` and
 `requestedLuids()` then act as if the program was not launched by GPU Fusion, so the program falls
 back to the default adapter.
 
@@ -120,7 +121,7 @@ in every time below. GT 730 and Intel are listed in that order. More detail is i
 
 | Program | Observed |
 |---|---|
-| `GPUFusionSplitDemo --all-adapters --size standard --runs 12` | GT 730 alone: 61.0 ms mean. Intel alone: 315 ms. Adaptive (conservative): 53.5 ms, with Intel doing 14 % of the rows. Verdict "faster", 1.14×. Every image was bit-exact. |
+| `GPUFusionSplitDemo --all-adapters --size standard --runs 8` (1.12.1, 3 runs) | GT 730 alone: 62.2–62.8 ms median. Intel alone: 316–318 ms. Adaptive (conservative): 53.5–54.1 ms median, with Intel doing 13.6 % of the rows. Verdict "faster", 1.13–1.14×. Copy to system memory (GPU timestamps): about 3 ms per run on the GT 730 and 0.9 ms on the Intel GPU. Every image was bit-exact. |
 | `GPUFusionProbe` in a Both profile | both GPUs did work. The probe renders the same work on each GPU; it does not split it. |
 | `GPUFusionSplitDemo` in a Both profile (`tst_splitdemo_live`) | GPU Fusion's verification: "Both GPUs used". |
 

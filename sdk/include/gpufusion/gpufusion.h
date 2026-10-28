@@ -72,16 +72,24 @@ inline std::wstring luidText(const LUID& l)
 } // namespace detail
 
 // The format version of GPU Fusion's variables: 0 when not launched by GPU Fusion, 1 for GPU Fusion
-// versions before the variable existed (same format).
+// versions before the variable existed (same format), -1 when the value is not a version number.
 inline int environmentVersion()
 {
     const std::wstring v = detail::env(L"GPUFUSION_ENV_VERSION");
-    if (!v.empty())
-        return std::wcstol(v.c_str(), nullptr, 10);
+    if (!v.empty()) {
+        wchar_t* end = nullptr;
+        const long n = std::wcstol(v.c_str(), &end, 10);
+        return end && *end == L'\0' && n >= 1 && n <= 1000000 ? int(n) : -1;
+    }
     return detail::env(L"GPUFUSION_MODE").empty() ? 0 : 1;
 }
-// False when a newer GPU Fusion set variables in a format this SDK does not know: then ignore them.
-inline bool environmentSupported() { return environmentVersion() <= kMaxEnvironmentVersion; }
+// False when the variables are in a format this SDK does not know (a newer GPU Fusion, or an
+// unreadable version): then ignore them.
+inline bool environmentSupported()
+{
+    const int v = environmentVersion();
+    return v >= 0 && v <= kMaxEnvironmentVersion;
+}
 
 // The mode GPU Fusion launched this program with.
 inline Mode mode()
@@ -117,19 +125,24 @@ inline std::vector<std::wstring> requestedLuids()
 }
 
 // The adapters to use, in order: those GPU Fusion requested that exist on this PC, otherwise the
-// default adapter (the first one Windows enumerates). Never empty if the system has an adapter.
+// default adapter (the first one Windows enumerates). Each adapter is listed once, even if its LUID
+// was requested twice (two devices on one GPU would only compete). Never empty if the system has an
+// adapter.
 inline std::vector<Microsoft::WRL::ComPtr<IDXGIAdapter1>> adapters(IDXGIFactory1* factory)
 {
     std::vector<Microsoft::WRL::ComPtr<IDXGIAdapter1>> all, out;
     Microsoft::WRL::ComPtr<IDXGIAdapter1> a;
     for (UINT i = 0; factory && factory->EnumAdapters1(i, &a) != DXGI_ERROR_NOT_FOUND; ++i, a.Reset())
         all.push_back(a);
+    std::vector<bool> taken(all.size(), false);
     for (const std::wstring& wanted : requestedLuids()) {
-        for (const auto& candidate : all) {
+        for (size_t i = 0; i < all.size(); ++i) {
             DXGI_ADAPTER_DESC1 d{};
-            candidate->GetDesc1(&d);
-            if (_wcsicmp(detail::luidText(d.AdapterLuid).c_str(), wanted.c_str()) == 0)
-                out.push_back(candidate);
+            all[i]->GetDesc1(&d);
+            if (!taken[i] && _wcsicmp(detail::luidText(d.AdapterLuid).c_str(), wanted.c_str()) == 0) {
+                taken[i] = true;
+                out.push_back(all[i]);
+            }
         }
     }
     if (out.empty() && !all.empty())

@@ -90,6 +90,12 @@ std::string escape(const std::string& s)
 {
     std::string o;
     for (char c : s) {
+        if (static_cast<unsigned char>(c) < 0x20) { // control characters are not allowed in JSON strings
+            char buf[8];
+            std::snprintf(buf, sizeof buf, "\\u%04x", static_cast<unsigned>(static_cast<unsigned char>(c)));
+            o += buf;
+            continue;
+        }
         if (c == '"' || c == '\\')
             o += '\\';
         o += c;
@@ -125,8 +131,19 @@ public:
         // work is done (IDXGIDevice2, Windows 8+). Without it, Map waits, which some drivers do by spinning.
         if (SUCCEEDED(h) && SUCCEEDED(m_device.As(&m_dxgi)))
             m_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        // GPU timestamps around the copy to system memory: its time without an extra wait (a second
+        // wait between the draws and the copy measured 3-4 % slower runs). Optional; see compute().
+        if (SUCCEEDED(h)) {
+            D3D11_QUERY_DESC q{ D3D11_QUERY_TIMESTAMP_DISJOINT, 0 };
+            bool ok = SUCCEEDED(m_device->CreateQuery(&q, &m_disjoint));
+            q.Query = D3D11_QUERY_TIMESTAMP;
+            ok = ok && SUCCEEDED(m_device->CreateQuery(&q, &m_copyStart)) && SUCCEEDED(m_device->CreateQuery(&q, &m_copyEnd));
+            if (!ok)
+                m_disjoint.Reset();
+        }
         return SUCCEEDED(h);
     }
+    bool copyTimestamps() const { return m_disjoint != nullptr; }
     ~HashWorker()
     {
         if (m_event)
@@ -148,10 +165,14 @@ public:
         std::swap(m_width, o.m_width);
         std::swap(m_rows, o.m_rows);
         std::swap(m_event, o.m_event);
+        std::swap(m_disjoint, o.m_disjoint);
+        std::swap(m_copyStart, o.m_copyStart);
+        std::swap(m_copyEnd, o.m_copyEnd);
         return *this;
     }
 
-    // Rows [first, first + rows) into dest (width * rows values). transferMs: the copy to system memory.
+    // Rows [first, first + rows) into dest (width * rows values). transferMs: the copy to system memory
+    // (GPU timestamps; 0 where the GPU has none) plus mapping it and copying the rows into the image.
     bool compute(const Params& p, std::uint32_t first, std::uint32_t rows, std::uint32_t* dest, double* transferMs)
     {
         if (!ensureTarget(p.width, rows))
@@ -172,24 +193,54 @@ public:
             m_context->Draw(3, 0);
             m_context->Flush();
         }
-        const auto t = std::chrono::steady_clock::now();
         const D3D11_BOX box{ 0, 0, 0, p.width, rows, 1 };
+        if (m_disjoint) {
+            m_context->Begin(m_disjoint.Get());
+            m_context->End(m_copyStart.Get());
+        }
         m_context->CopySubresourceRegion(m_staging.Get(), 0, 0, 0, 0, m_target.Get(), 0, &box);
+        if (m_disjoint) {
+            m_context->End(m_copyEnd.Get());
+            m_context->End(m_disjoint.Get());
+        }
+        m_context->Flush();
         if (m_event && SUCCEEDED(m_dxgi->EnqueueSetEvent(m_event)))
             WaitForSingleObject(m_event, 30000);
+        const auto t = std::chrono::steady_clock::now();
         D3D11_MAPPED_SUBRESOURCE m{};
-        if (FAILED(m_context->Map(m_staging.Get(), 0, D3D11_MAP_READ, 0, &m))) // waits for the GPU
+        if (FAILED(m_context->Map(m_staging.Get(), 0, D3D11_MAP_READ, 0, &m))) // waits for the GPU if there is no event
             return false;
         for (std::uint32_t y = 0; y < rows; ++y)
             std::memcpy(dest + std::size_t(y) * p.width, static_cast<const std::uint8_t*>(m.pData) + std::size_t(y) * m.RowPitch,
                         p.width * sizeof(std::uint32_t));
         m_context->Unmap(m_staging.Get(), 0);
         if (transferMs)
-            *transferMs = msSince(t); // includes waiting for the GPU to finish the draws
+            *transferMs = msSince(t) + gpuCopyMs();
         return true;
     }
 
 private:
+    // The GPU's time for the copy, from the timestamps (the GPU has finished, so they are ready);
+    // 0 if unavailable or unreliable (the GPU changed its clock during the copy).
+    double gpuCopyMs()
+    {
+        if (!m_disjoint)
+            return 0;
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT d{};
+        UINT64 a = 0, b = 0;
+        const auto start = std::chrono::steady_clock::now();
+        auto get = [&](ID3D11Query* q, void* out, UINT size) {
+            HRESULT h;
+            while ((h = m_context->GetData(q, out, size, 0)) == S_FALSE && msSince(start) < 100)
+                SwitchToThread();
+            return h == S_OK;
+        };
+        if (!get(m_disjoint.Get(), &d, sizeof d) || !get(m_copyStart.Get(), &a, sizeof a) || !get(m_copyEnd.Get(), &b, sizeof b))
+            return 0;
+        if (d.Disjoint || d.Frequency == 0 || b < a)
+            return 0;
+        return double(b - a) * 1000.0 / double(d.Frequency);
+    }
     static std::string hex(HRESULT h)
     {
         char buf[16];
@@ -234,6 +285,7 @@ private:
     ComPtr<ID3D11DeviceContext> m_context;
     ComPtr<IDXGIDevice2> m_dxgi;
     HANDLE m_event = nullptr;
+    ComPtr<ID3D11Query> m_disjoint, m_copyStart, m_copyEnd;
     ComPtr<ID3D11VertexShader> m_vs;
     ComPtr<ID3D11PixelShader> m_ps;
     ComPtr<ID3D11Buffer> m_constants;
@@ -357,6 +409,7 @@ int wmain(int argc, wchar_t** argv)
         json += std::string(i ? "," : "") + "{\"name\":\"" + escape(utf8(c.name)) + "\",\"luid\":\"" + utf8(c.luid) + "\",\"vendorId\":"
               + std::to_string(c.vendorId) + ",\"featureLevel\":\"" + utf8(gpufusion::featureLevelText(c.featureLevel)) + "\",\"computeShaders\":"
               + (c.computeShaders ? "true" : "false") + ",\"dedicatedMB\":" + std::to_string(c.dedicatedMB) + ",\"usable\":" + (ok ? "true" : "false")
+              + ",\"copyTimedOnGpu\":" + (ok && workers[i].copyTimestamps() ? "true" : "false")
               + (ok ? "" : ",\"skipped\":\"" + escape(error) + "\"") + "}";
         if (ok) {
             usable.push_back(devices[i]);

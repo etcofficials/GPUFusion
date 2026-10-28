@@ -174,7 +174,20 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Roblox / Minecraft split across GPUs | ✘ (not possible) | neither integrates the SDK; splitting a game's rendering needs D3D12 on both GPUs — [GPU_SELECTION.md](GPU_SELECTION.md#roblox-and-minecraft) |
 | Existing single-GPU modes still work | ✔ (without the registry tests) | the 29 non-registry suites pass; the 6 registry-labelled suites (which write and restore the probe's own Windows GPU preference) were not run for 1.12, because changing Windows GPU preferences was not authorised for this phase |
 
+## 1.12.1 — review fixes
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Transfers are measured, not mixed with GPU work | ✔ | demo: copy timed with GPU timestamps (GT 730 ~3 ms, HD 2000 0.9 ms per run at standard size; 1.12.0 reported ~50 ms, which was the wait for the shader work); Lab: unchanged (wait for the draws, then the timed copy) |
+| The fix does not slow the work down | ✔ | 1.12.0 and 1.12.1 demos run alternately, 3 runs each: adaptive median 53.4–54.6 ms against 53.5–54.1 ms |
+| Unknown variable formats are ignored | ✔ | `tst_sdk::environmentVersion` (`abc`, `1x`, `-1`, `0`) |
+| Each offered adapter used once | ✔ | `tst_sdk::adaptersFallBackToTheDefault` (a LUID listed twice) |
+| Adaptive sessions filed and explained correctly on one GPU | ✔ | `tst_labmodel::adaptiveScheduler`; real session saved with `lab.adaptive.single` |
+
 ## Tests at release
+
+1.12.1: 35 CTest entries; the 29 that change no Windows setting were run and all pass with
+reference-machine expectations. The 6 registry-labelled entries were not run (2026-10-28).
 
 1.12.0: 35 CTest entries; the 29 that change no Windows setting were run and all pass with
 reference-machine expectations (290 QtTest results including init/cleanup, 0 failed, 0 skipped). The 6
