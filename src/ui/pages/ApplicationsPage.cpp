@@ -1,4 +1,5 @@
 #include "ui/pages/ApplicationsPage.h"
+#include "ui/widgets/FrameTimeDialog.h"
 
 #include "hardware/HardwareService.h"
 #include "monitoring/MonitorService.h"
@@ -107,9 +108,14 @@ ApplicationsPage::ApplicationsPage(AppContext& context, QWidget* parent) : QWidg
     m_profileButton = new QPushButton(tr("GPU profile…"));
     m_profileButton->setToolTip(tr("Open this program in the GPU Manager (a profile is created if it has none)"));
     m_profileButton->setEnabled(false);
+    m_framesButton = new QPushButton(tr("Measure frame times…"));
+    m_framesButton->setToolTip(tr("Measure this program's frame times from outside with Windows' graphics events (asks for administrator "
+                                  "rights; nothing is loaded into the program)"));
+    m_framesButton->setEnabled(false);
     auto* detailButtons = new QHBoxLayout;
     detailButtons->addWidget(m_openFolder);
     detailButtons->addWidget(m_profileButton);
+    detailButtons->addWidget(m_framesButton);
     detailButtons->addStretch();
     detailsCard->body()->addWidget(m_details, 1);
     detailsCard->body()->addLayout(detailButtons);
@@ -143,6 +149,17 @@ ApplicationsPage::ApplicationsPage(AppContext& context, QWidget* parent) : QWidg
     connect(m_profileButton, &QPushButton::clicked, this, [this] {
         if (const ProcessSample* p = m_model->process(m_detailsKey); p && !p->path.isEmpty())
             Q_EMIT profileRequested(QDir::toNativeSeparators(p->path));
+    });
+    connect(m_framesButton, &QPushButton::clicked, this, [this] {
+        const ProcessSample* p = m_model->process(m_detailsKey);
+        const auto detection = m_context.hardware().latest();
+        if (!p || !detection)
+            return;
+        const DataLocation& d = m_context.data();
+        auto* dialog = new FrameTimeDialog(p->pid, p->name, p->path, mon::targetsFrom(*detection), QDir(d.root).filePath(QStringLiteral("frames")),
+                                           d.reportsDir(), d.tempDir(), this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->show();
     });
     connect(m_openFolder, &QPushButton::clicked, this, [this] {
         if (const ProcessSample* p = m_model->process(m_detailsKey); p && !p->path.isEmpty())
@@ -297,6 +314,7 @@ void ApplicationsPage::updateDetails()
         html = tr("The selected process has exited.");
         m_openFolder->setEnabled(false);
         m_profileButton->setEnabled(false);
+        m_framesButton->setEnabled(false);
     } else {
         html = QStringLiteral("<b style='color:%1'>%2</b> &nbsp; PID %3<br>%4<br>")
                    .arg(c.text.name(), p->name.toHtmlEscaped()).arg(p->pid)
@@ -330,6 +348,7 @@ void ApplicationsPage::updateDetails()
         }
         m_openFolder->setEnabled(!p->path.isEmpty());
         m_profileButton->setEnabled(!p->path.isEmpty() && m_context.profiles());
+        m_framesButton->setEnabled(true);
     }
     if (m_details->text() != html) // QLabel::setText re-lays out the page
         m_details->setText(html);

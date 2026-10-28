@@ -8,6 +8,7 @@
 #include "hardware/HardwareService.h"
 #include "monitoring/MonitorService.h"
 #include "monitoring/UsageObserver.h"
+#include "platform/windows/ProcessList.h"
 #include "preferences/PreferenceService.h"
 #include "profiles/KnownOptions.h"
 #include "profiles/ProfileActions.h"
@@ -16,6 +17,8 @@
 #include "profiles/Shortcuts.h"
 #include "diagnostics/DiagnosticReport.h"
 #include "dispatch/JobDispatcher.h"
+#include "frames/FrameMeasure.h"
+#include "frames/FrameSession.h"
 #include "ui/DiagnosticsCollector.h"
 #include "ui/AppContext.h"
 #include "ui/MainWindow.h"
@@ -135,6 +138,19 @@ int main(int argc, char* argv[])
     const QCommandLineOption dispatchCompareOpt(QStringLiteral("dispatch-compare"),
         QStringLiteral("With --dispatch: measure the batch <n> times on each GPU alone and on all chosen GPUs, check outputs and report "
                        "whether all GPUs together are significantly faster."), QStringLiteral("n"));
+    const QCommandLineOption measureFramesOpt(QStringLiteral("measure-frames"),
+        QStringLiteral("Measure the frame times of a running program, given by process id or executable name, from outside with Windows' "
+                       "graphics event tracing (asks for administrator rights through the Windows prompt). Saves the measurement and an HTML "
+                       "report, and exits. Exit code 0 = frames measured, 10 = not measured (e.g. prompt declined), 11 = no frames seen."),
+        QStringLiteral("pid|exe"));
+    const QCommandLineOption framesSecondsOpt(QStringLiteral("frames-seconds"), QStringLiteral("With --measure-frames: capture length (default 20)."),
+                                              QStringLiteral("seconds"), QStringLiteral("20"));
+    const QCommandLineOption framesLabelOpt(QStringLiteral("frames-label"), QStringLiteral("With --measure-frames: a label such as \"before\" or \"after\"."),
+                                            QStringLiteral("text"));
+    const QCommandLineOption framesCompareOpt(QStringLiteral("frames-compare"),
+        QStringLiteral("With --measure-frames: compare with an earlier measurement (its id, or \"last\" for the newest one of the same program)."),
+        QStringLiteral("id"));
+    cli.addOptions({ measureFramesOpt, framesSecondsOpt, framesLabelOpt, framesCompareOpt });
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt, labPolicyOpt,
                      verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, variantOpt, exportProfilesOpt, importProfilesOpt, replaceExistingOpt, interactiveOpt, createShortcutOpt, shortcutDirOpt, launchProfileOpt, verifyProfileOpt,
                      dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
@@ -494,6 +510,88 @@ int main(int argc, char* argv[])
         else
             QTimer::singleShot(0, &app, run);
         exitCode = app.exec(); // the code passed to QApplication::exit, including early exits
+        gf::log::shutdown();
+        return exitCode;
+    }
+
+    if (cli.isSet(measureFramesOpt)) {
+        // Frame times of a running program, measured from outside (nothing is loaded into it).
+        const QString which = cli.value(measureFramesOpt);
+        bool numeric = false;
+        quint32 pid = which.toUInt(&numeric);
+        QString name, path;
+        {
+            gf::mon::win::ProcessList list;
+            quint64 newest = 0;
+            for (const gf::mon::win::ProcessInfo& p : list.snapshot()) {
+                const bool match = numeric ? p.pid == pid
+                                           : p.name.compare(which, Qt::CaseInsensitive) == 0 || p.name.compare(which + QStringLiteral(".exe"), Qt::CaseInsensitive) == 0;
+                if (match && (numeric || p.creationTime >= newest)) {
+                    pid = p.pid;
+                    name = p.name;
+                    path = p.path;
+                    newest = p.creationTime;
+                }
+            }
+        }
+        if (name.isEmpty()) {
+            qCCritical(lcApp).noquote() << "No running process" << which;
+            gf::log::shutdown();
+            return 2;
+        }
+        const QString framesDir = QDir(data.root).filePath(QStringLiteral("frames"));
+        std::optional<gf::frames::FrameSession> before;
+        if (cli.isSet(framesCompareOpt)) {
+            const QString id = cli.value(framesCompareOpt);
+            for (const gf::frames::FrameSession& s : gf::frames::loadSessions(framesDir)) { // newest first
+                if (id == QLatin1StringView("last") ? s.processName.compare(name, Qt::CaseInsensitive) == 0 && s.measured() : s.id == id) {
+                    before = s;
+                    break;
+                }
+            }
+            if (!before) {
+                qCCritical(lcApp).noquote() << "No earlier frame-time measurement" << id << "to compare with.";
+                gf::log::shutdown();
+                return 2;
+            }
+        }
+        int exitCode = 10;
+        auto run = [&] {
+            gf::frames::MeasureOptions o;
+            o.pid = pid;
+            o.processName = name;
+            o.processPath = path;
+            o.seconds = std::clamp(cli.value(framesSecondsOpt).toInt(), 2, 3600);
+            o.label = cli.value(framesLabelOpt);
+            o.helperPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("GPUFusionFrameCapture.exe"));
+            o.workDir = data.tempDir();
+            const gf::frames::FrameSession s = gf::frames::measureFrames(gf::mon::targetsFrom(*hardware.latest()), o);
+            QString error;
+            if (!gf::frames::saveSession(framesDir, s, &error))
+                qCWarning(lcApp).noquote() << "Could not save the measurement:" << error;
+            const QString report = QDir(data.reportsDir()).filePath(s.id + QStringLiteral(".html"));
+            QDir().mkpath(data.reportsDir());
+            QFile f(report);
+            if (f.open(QIODevice::WriteOnly))
+                f.write(gf::frames::reportHtml(s, before ? &*before : nullptr).toUtf8());
+            qCInfo(lcApp).noquote() << "Frame times of" << name << QStringLiteral("(process %1), measurement %2:").arg(pid).arg(s.id);
+            for (const QString& line : gf::frames::summaryLines(s))
+                qCInfo(lcApp).noquote() << "  " << line;
+            if (before) {
+                const gf::frames::FrameComparison c = gf::frames::compareSessions(*before, s);
+                qCInfo(lcApp).noquote() << "  Compared with" << before->id << ":" << (c.comparable ? c.text : c.reason);
+            }
+            qCInfo(lcApp).noquote() << "  Report:" << QDir::toNativeSeparators(report);
+            const gf::frames::CapturedProcess* p = s.target();
+            const gf::frames::FrameStream* m = p ? gf::frames::mainStream(*p) : nullptr;
+            exitCode = !s.measured() ? 10 : (m && m->t.size() >= 2 ? 0 : 11);
+            QApplication::exit(exitCode);
+        };
+        if (hardware.isRunning() || !hardware.latest())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
+        else
+            QTimer::singleShot(0, &app, run);
+        exitCode = app.exec();
         gf::log::shutdown();
         return exitCode;
     }

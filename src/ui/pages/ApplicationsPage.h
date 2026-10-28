@@ -54,6 +54,7 @@ private:
     QLabel* m_details;
     QPushButton* m_openFolder;
     QPushButton* m_profileButton;
+    QPushButton* m_framesButton;
     QTimer m_preferenceTimer;
     QString m_detailsKey;
     QString m_profileSignature; // profile files (name, size, time) + GPUs last loaded into the model

@@ -1,0 +1,759 @@
+{
+ "started": "2026-10-28 19:28:29",
+ "cases": [
+  {
+   "case": "d3d11 GT 10ms",
+   "args": [
+    "--api",
+    "d3d11",
+    "--interval-ms",
+    "10"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "d3d11",
+    "pid": 6480,
+    "adapter": "NVIDIA GeForce GT 730",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 10.0,
+    "presents": 900,
+    "failedPresents": 0,
+    "firstPresentMs": 10.0,
+    "frameTimeMs": {
+     "mean": 10.0,
+     "median": 10.0,
+     "p95": 10.0007,
+     "p99": 10.0331,
+     "max": 27.0173
+    },
+    "longFrames": 1
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 3581,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 3.9
+   },
+   "streams": [
+    {
+     "runtime": "DXGI",
+     "syncInterval": 0,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 604,
+      "median": 10.0,
+      "mean": 9.999966832504146,
+      "p99": 10.083999999999833,
+      "max": 27.01699999999994,
+      "long": 1
+     }
+    },
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 604,
+      "median": 10.0,
+      "mean": 10.000024875621891,
+      "p99": 10.279000000000451,
+      "max": 27.966999999999985,
+      "long": 1
+     }
+    }
+   ]
+  },
+  {
+   "case": "d3d12 GT 10ms",
+   "args": [
+    "--api",
+    "d3d12",
+    "--interval-ms",
+    "10"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "d3d12",
+    "pid": 5316,
+    "adapter": "NVIDIA GeForce GT 730",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 10.0,
+    "presents": 900,
+    "failedPresents": 0,
+    "firstPresentMs": 10.0,
+    "frameTimeMs": {
+     "mean": 10.0,
+     "median": 10.0,
+     "p95": 10.0001,
+     "p99": 10.0002,
+     "max": 10.0267
+    },
+    "longFrames": 0
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 3581,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 3.9
+   },
+   "streams": [
+    {
+     "runtime": "DXGI",
+     "syncInterval": 0,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 604,
+      "median": 9.995999999999981,
+      "mean": 9.999824212271973,
+      "p99": 10.134999999999991,
+      "max": 10.260999999999967,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "d3d9 10ms",
+   "args": [
+    "--api",
+    "d3d9",
+    "--interval-ms",
+    "10"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "d3d9",
+    "pid": 10956,
+    "adapter": "NVIDIA GeForce GT 730",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 10.0,
+    "presents": 900,
+    "failedPresents": 0,
+    "firstPresentMs": 10.0,
+    "frameTimeMs": {
+     "mean": 10.0,
+     "median": 10.0,
+     "p95": 10.0001,
+     "p99": 10.002,
+     "max": 11.8216
+    },
+    "longFrames": 0
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 4193,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 3.9
+   },
+   "streams": [
+    {
+     "runtime": "D3D9",
+     "syncInterval": 0,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 605,
+      "median": 10.0,
+      "mean": 9.985647350993379,
+      "p99": 10.015999999999849,
+      "max": 11.855000000000473,
+      "long": 0
+     }
+    },
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 605,
+      "median": 9.996499999999742,
+      "mean": 9.985197019867549,
+      "p99": 10.201999999999998,
+      "max": 11.789999999999964,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "opengl 10ms",
+   "args": [
+    "--api",
+    "opengl",
+    "--interval-ms",
+    "10"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "opengl",
+    "pid": 2532,
+    "adapter": "GeForce GT 730/PCIe/SSE2 (OpenGL 4.6.0 NVIDIA 391.35)",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 10.0,
+    "presents": 900,
+    "failedPresents": 0,
+    "firstPresentMs": 10.0,
+    "frameTimeMs": {
+     "mean": 10.0,
+     "median": 10.0,
+     "p95": 10.0001,
+     "p99": 10.0079,
+     "max": 25.2124
+    },
+    "longFrames": 1
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 2989,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 3.9
+   },
+   "streams": [
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 605,
+      "median": 9.995000000000346,
+      "mean": 9.999726821192054,
+      "p99": 10.50800000000072,
+      "max": 15.625999999999976,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "d3d11 Intel 10ms",
+   "args": [
+    "--api",
+    "d3d11",
+    "--adapter",
+    "00000000_000089C0",
+    "--interval-ms",
+    "10"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "d3d11",
+    "pid": 1876,
+    "adapter": "Intel(R) HD Graphics",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 10.0,
+    "presents": 900,
+    "failedPresents": 0,
+    "firstPresentMs": 10.0,
+    "frameTimeMs": {
+     "mean": 10.0,
+     "median": 10.0,
+     "p95": 10.0001,
+     "p99": 10.0048,
+     "max": 12.397
+    },
+    "longFrames": 0
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 3599,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 3.9
+   },
+   "streams": [
+    {
+     "runtime": "DXGI",
+     "syncInterval": 0,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 606,
+      "median": 9.997999999999593,
+      "mean": 9.999889256198347,
+      "p99": 10.059999999999945,
+      "max": 12.384000000000015,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "d3d11 GT uncapped",
+   "args": [
+    "--api",
+    "d3d11"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "d3d11",
+    "pid": 1200,
+    "adapter": "NVIDIA GeForce GT 730",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 0.0,
+    "presents": 48686,
+    "failedPresents": 0,
+    "firstPresentMs": 0.365,
+    "frameTimeMs": {
+     "mean": 0.1849,
+     "median": 0.1686,
+     "p95": 0.2591,
+     "p99": 0.638,
+     "max": 3.879
+    },
+    "longFrames": 0
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 129361,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 15.6,
+    "cpuPercentOfAllCores": 0.07,
+    "peakWorkingSetMB": 5.4
+   },
+   "streams": [
+    {
+     "runtime": "DXGI",
+     "syncInterval": 0,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 32051,
+      "median": 0.17199999999957072,
+      "mean": 0.18754605304212169,
+      "p99": 0.636000000000422,
+      "max": 3.3210000000003674,
+      "long": 0
+     }
+    },
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 32046,
+      "median": 0.17099999999999227,
+      "mean": 0.18754779216726478,
+      "p99": 0.6679999999999495,
+      "max": 3.3669999999997344,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "opengl uncapped",
+   "args": [
+    "--api",
+    "opengl"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "opengl",
+    "pid": 8988,
+    "adapter": "GeForce GT 730/PCIe/SSE2 (OpenGL 4.6.0 NVIDIA 391.35)",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 0.0,
+    "presents": 32203,
+    "failedPresents": 0,
+    "firstPresentMs": 0.948,
+    "frameTimeMs": {
+     "mean": 0.2795,
+     "median": 0.2531,
+     "p95": 0.3577,
+     "p99": 0.6009,
+     "max": 42.8909
+    },
+    "longFrames": 1
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 66561,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 5.7
+   },
+   "streams": [
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 21796,
+      "median": 0.2539999999999054,
+      "mean": 0.28018421656343195,
+      "p99": 0.5800000000001546,
+      "max": 3.1809999999995853,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "d3d9 uncapped",
+   "args": [
+    "--api",
+    "d3d9"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "d3d9",
+    "pid": 2516,
+    "adapter": "NVIDIA GeForce GT 730",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 0.0,
+    "presents": 34622,
+    "failedPresents": 0,
+    "firstPresentMs": 0.341,
+    "frameTimeMs": {
+     "mean": 0.2599,
+     "median": 0.25,
+     "p95": 0.3253,
+     "p99": 0.4544,
+     "max": 2.9075
+    },
+    "longFrames": 0
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 117122,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 15.6,
+    "cpuPercentOfAllCores": 0.06,
+    "peakWorkingSetMB": 4.8
+   },
+   "streams": [
+    {
+     "runtime": "D3D9",
+     "syncInterval": 0,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 23190,
+      "median": 0.25099999999997635,
+      "mean": 0.25958661434300745,
+      "p99": 0.4350000000000005,
+      "max": 2.9090000000001055,
+      "long": 0
+     }
+    },
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 23192,
+      "median": 0.250999999999749,
+      "mean": 0.2595855288689578,
+      "p99": 0.43499999999994543,
+      "max": 2.9079999999999018,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "d3d11 vsync",
+   "args": [
+    "--api",
+    "d3d11",
+    "--vsync"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "d3d11",
+    "pid": 1680,
+    "adapter": "NVIDIA GeForce GT 730",
+    "ok": true,
+    "vsync": true,
+    "intervalMs": 0.0,
+    "presents": 543,
+    "failedPresents": 0,
+    "firstPresentMs": 0.665,
+    "frameTimeMs": {
+     "mean": 16.5823,
+     "median": 16.6614,
+     "p95": 16.8427,
+     "p99": 17.1511,
+     "max": 28.9358
+    },
+    "longFrames": 0
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 2631,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 3.9
+   },
+   "streams": [
+    {
+     "runtime": "DXGI",
+     "syncInterval": 1,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 362,
+      "median": 16.661000000000058,
+      "mean": 16.71216620498615,
+      "p99": 17.061999999999898,
+      "max": 28.935000000000002,
+      "long": 0
+     }
+    },
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 363,
+      "median": 16.666000000000167,
+      "mean": 16.71252762430939,
+      "p99": 16.996000000000095,
+      "max": 28.941000000000003,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "opengl vsync",
+   "args": [
+    "--api",
+    "opengl",
+    "--vsync"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "opengl",
+    "pid": 6888,
+    "adapter": "GeForce GT 730/PCIe/SSE2 (OpenGL 4.6.0 NVIDIA 391.35)",
+    "ok": true,
+    "vsync": true,
+    "intervalMs": 0.0,
+    "presents": 542,
+    "failedPresents": 0,
+    "firstPresentMs": 0.606,
+    "frameTimeMs": {
+     "mean": 16.6286,
+     "median": 16.6592,
+     "p95": 16.8227,
+     "p99": 17.019,
+     "max": 37.5321
+    },
+    "longFrames": 1
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 2267,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 4.0
+   },
+   "streams": [
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 364,
+      "median": 16.65899999999965,
+      "mean": 16.665404958677687,
+      "p99": 17.20400000000018,
+      "max": 17.368000000000393,
+      "long": 0
+     }
+    }
+   ]
+  },
+  {
+   "case": "d3d11 stalls",
+   "args": [
+    "--api",
+    "d3d11",
+    "--interval-ms",
+    "16.667",
+    "--stall-every",
+    "30",
+    "--stall-ms",
+    "50"
+   ],
+   "truth": {
+    "tool": "GPUFusionFrameTest",
+    "api": "d3d11",
+    "pid": 4912,
+    "adapter": "NVIDIA GeForce GT 730",
+    "ok": true,
+    "vsync": false,
+    "intervalMs": 16.667,
+    "presents": 492,
+    "failedPresents": 0,
+    "firstPresentMs": 16.667,
+    "frameTimeMs": {
+     "mean": 18.2963,
+     "median": 16.667,
+     "p95": 16.6699,
+     "p99": 66.6671,
+     "max": 66.6673
+    },
+    "longFrames": 16
+   },
+   "captureOk": true,
+   "error": null,
+   "events": 2444,
+   "eventsLost": 0,
+   "overhead": {
+    "cpuMs": 0.0,
+    "cpuPercentOfAllCores": 0.0,
+    "peakWorkingSetMB": 4.0
+   },
+   "streams": [
+    {
+     "runtime": "DXGI",
+     "syncInterval": 0,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 330,
+      "median": 16.666999999999916,
+      "mean": 18.33869300911854,
+      "p99": 66.67200000000003,
+      "max": 66.6740000000002,
+      "long": 11
+     }
+    },
+    {
+     "runtime": "Kernel",
+     "syncInterval": null,
+     "discarded": 0,
+     "occluded": 0,
+     "stats": {
+      "presents": 330,
+      "median": 16.664000000000215,
+      "mean": 18.338328267477202,
+      "p99": 66.78499999999985,
+      "max": 66.8149999999996,
+      "long": 11
+     }
+    }
+   ]
+  }
+ ],
+ "errors": [],
+ "allProcesses": {
+  "ok": true,
+  "error": null,
+  "events": 452,
+  "overhead": {
+   "cpuMs": 0.0,
+   "cpuPercentOfAllCores": 0.0,
+   "peakWorkingSetMB": 3.9
+  },
+  "processes": [
+   {
+    "name": "process 804",
+    "streams": [
+     {
+      "runtime": "Kernel",
+      "stats": {
+       "presents": 73,
+       "median": 66.6720000000002,
+       "mean": 69.20829166666667,
+       "p99": 133.21000000000004,
+       "max": 133.30100000000004,
+       "long": 0
+      }
+     }
+    ]
+   },
+   {
+    "name": "process 1204",
+    "streams": [
+     {
+      "runtime": "DXGI",
+      "stats": {
+       "presents": 80,
+       "median": 50.76800000000003,
+       "mean": 63.491594936708864,
+       "p99": 117.22000000000025,
+       "max": 132.78499999999985,
+       "long": 14
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "overhead": {
+  "without": [
+   5506.25,
+   5561.0,
+   5510.125
+  ],
+  "with": [
+   5376.375,
+   5119.0,
+   5275.5
+  ],
+  "captureOverhead": [
+   {
+    "cpuMs": 31.2,
+    "cpuPercentOfAllCores": 0.1,
+    "peakWorkingSetMB": 6.1
+   },
+   {
+    "cpuMs": 15.6,
+    "cpuPercentOfAllCores": 0.05,
+    "peakWorkingSetMB": 5.5
+   },
+   {
+    "cpuMs": 31.2,
+    "cpuPercentOfAllCores": 0.09,
+    "peakWorkingSetMB": 5.2
+   }
+  ]
+ },
+ "endToEnd": {
+  "exitCode": 0
+ },
+ "finished": "2026-10-28 19:39:36"
+}

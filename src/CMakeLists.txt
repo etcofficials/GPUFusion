@@ -126,6 +126,14 @@ add_library(gpufusion_diagnostics STATIC
 )
 target_link_libraries(gpufusion_diagnostics PUBLIC gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options advapi32)
 
+# ---- frames: frame-time measurement of running programs (capture data, statistics, sessions) ----
+add_library(gpufusion_frames STATIC
+    frames/FrameCapture.cpp frames/FrameCapture.h
+    frames/FrameMeasure.cpp frames/FrameMeasure.h
+    frames/FrameSession.cpp frames/FrameSession.h
+)
+target_link_libraries(gpufusion_frames PUBLIC gpufusion_monitoring gpufusion_benchmarks PRIVATE gpufusion::options advapi32 shell32)
+
 # ---- ui: Qt Widgets ------------------------------------------------------------
 add_library(gpufusion_ui STATIC
     ui/AppContext.cpp ui/AppContext.h
@@ -147,13 +155,14 @@ add_library(gpufusion_ui STATIC
     ui/widgets/AdapterCard.cpp ui/widgets/AdapterCard.h
     ui/widgets/BarChart.cpp ui/widgets/BarChart.h
     ui/widgets/Card.cpp ui/widgets/Card.h
+    ui/widgets/FrameTimeDialog.cpp ui/widgets/FrameTimeDialog.h
     ui/widgets/GuideDialog.cpp ui/widgets/GuideDialog.h
     ui/widgets/HistoryGraph.cpp ui/widgets/HistoryGraph.h
     ui/widgets/JobBatchPanel.cpp ui/widgets/JobBatchPanel.h
     ui/widgets/LiveText.cpp ui/widgets/LiveText.h
     ui/widgets/MonitorCard.cpp ui/widgets/MonitorCard.h
 )
-target_link_libraries(gpufusion_ui PUBLIC gpufusion_core gpufusion_hardware gpufusion_monitoring gpufusion_diagnostics gpufusion_benchmarks gpufusion_profiles gpufusion_dispatch Qt6::Widgets PRIVATE gpufusion::options)
+target_link_libraries(gpufusion_ui PUBLIC gpufusion_core gpufusion_hardware gpufusion_monitoring gpufusion_diagnostics gpufusion_benchmarks gpufusion_profiles gpufusion_dispatch gpufusion_frames Qt6::Widgets PRIVATE gpufusion::options)
 
 # ---- application -----------------------------------------------------------------
 add_executable(GPUFusion WIN32

@@ -174,6 +174,19 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Roblox / Minecraft split across GPUs | ✘ (not possible) | neither integrates the SDK; splitting a game's rendering needs D3D12 on both GPUs — [GPU_SELECTION.md](GPU_SELECTION.md#roblox-and-minecraft) |
 | Existing single-GPU modes still work | ✔ (without the registry tests) | the 29 non-registry suites pass; the 6 registry-labelled suites (which write and restore the probe's own Windows GPU preference) were not run for 1.12, because changing Windows GPU preferences was not authorised for this phase |
 
+## 1.13 — frame-time measurement (phase 1 of game support)
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Frame times of running programs, for as many APIs as Windows' tracing allows | ✔ | DXGI (Direct3D 10/11/12), Direct3D 9, and kernel presents (OpenGL; Vulkan by the same path, not testable here) — [FRAME_TIMES.md](FRAME_TIMES.md) |
+| External to the program; no injection, no process changes | ✔ | ETW consumer in a separate helper; nothing opens the program except to read its name |
+| Accurate | ✔ | ground truth per API: medians within 0.005 ms at 10 ms; uncapped up to 5,400 fps; vsync; every injected stall found; 0 events lost (`validate_frame_capture.py`, run elevated once with approval) |
+| Measured, estimated and unavailable kept apart | ✔ | report and summary say which is which (`tst_frames::reportSeparatesMeasuredFromEstimated`) |
+| Before/after with a readable report | ✔ | per-second means with the significance rule; HTML report; `--frames-compare` |
+| Permissions handled transparently, no silent system changes | ✔ | the administrator prompt for each capture; a decline measures nothing and says so; no group, registry, driver or GPU-preference change (`tst_frames_live::helperRefusesCleanlyWithoutRights`) |
+| Lightweight | ✔ | helper 0.05–0.1 % CPU and 6 MB; GPU Fusion 0.15 %; −4.3 % only for a 5,500 fps program (about 8 µs per present) |
+| Measured with real games | ✘ (not yet) | no game was started without the user; the first game measurements belong to phase 2 |
+
 ## 1.12.1 — review fixes
 
 | Requirement | Status | Evidence |
@@ -185,6 +198,11 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Adaptive sessions filed and explained correctly on one GPU | ✔ | `tst_labmodel::adaptiveScheduler`; real session saved with `lab.adaptive.single` |
 
 ## Tests at release
+
+1.13.0: 38 CTest entries; the 32 that change no Windows setting were run and all pass with
+reference-machine expectations. The 4 elevated cases of `tst_frames_live` were skipped (not
+elevated) and checked by the approved validation run instead. The 6 registry-labelled entries were
+not run (2026-10-28).
 
 1.12.1: 35 CTest entries; the 29 that change no Windows setting were run and all pass with
 reference-machine expectations. The 6 registry-labelled entries were not run (2026-10-28).

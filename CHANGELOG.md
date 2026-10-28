@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.13.0 — 2026-10-28
+
+Frame-time measurement of running programs: the first step of game support. A change offered for a
+game can now be measured on that game, before and after. See [docs/FRAME_TIMES.md](docs/FRAME_TIMES.md).
+
+- **Applications → Measure frame times…** and `--measure-frames <pid|exe>` (with `--frames-seconds`,
+  `--frames-label`, `--frames-compare last|<id>`):
+  - frames per second, median, 95th and 99th percentile, longest frame, "1 % low" and stutters;
+  - a before/after verdict with GPU Fusion's significance rule, applied to per-second means;
+  - an HTML report.
+- **Measured from outside**, with Windows' graphics events, the ones PresentMon uses: DXGI (Direct3D
+  10/11/12) and Direct3D 9 present events, and kernel present events for OpenGL, Vulkan and other
+  APIs. Nothing is loaded into the measured program and nothing about it is changed.
+- **Permissions:** event tracing needs administrator rights. GPU Fusion starts the new helper
+  `GPUFusionFrameCapture.exe` through the Windows administrator prompt for each measurement. Decline
+  it and nothing is measured. No group membership or setting is changed.
+- **Measured vs estimated vs unavailable**, kept apart everywhere:
+  - frame times are measured;
+  - the program's GPU use is estimated (GPU Fusion's per-process monitoring, once a second);
+  - display times, dropped frames and latency are not available.
+- **Checked against ground truth:** the new `GPUFusionFrameTest.exe` presents at a known pace and
+  records its own present times. The captured medians match within 0.005 ms at 10 ms per frame for
+  Direct3D 11 (GT 730 and HD 2000), Direct3D 12, Direct3D 9 and OpenGL. Uncapped (3,600–5,400 fps),
+  with vsync and with injected stalls, every stall was found and no events were lost.
+- **Overhead:**
+  - the helper uses 0.05–0.1 % of all CPU cores and about 6 MB;
+  - GPU Fusion uses 0.15 % while measuring;
+  - in the worst case, a program presenting about 5,500 times a second, the captured program ran
+    4.3 % slower, about 8 µs per present.
+- **Tests:** `tst_frames` (statistics, parsing, sessions, comparison, report wording),
+  `tst_frames_ui` (the dialog, without measuring) and `tst_frames_live`. The live test checks the clean "access denied" without rights; elevated, it
+  checks each API against ground truth.
+- No game was measured yet: GPU Fusion does not start your programs on its own.
+
+
 ## 1.12.1 — 2026-10-28
 
 Fixes from a review of 1.12.0. Nothing here changes how the scheduler divides work.

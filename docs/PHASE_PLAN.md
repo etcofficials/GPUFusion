@@ -334,6 +334,15 @@
   - companion offload with a before/after verdict;
   - one engine plugin (Godot GDExtension) over a DLL build of the SDK.
 
+## 1.18 — frame-time measurement, release 1.13.0 (2026-10-28)
+
+- Phase 1 of broad game and application support: frame times of any running program, measured from
+  outside with Windows' graphics events, with no injection. Checked against a ground-truth presenter
+  for Direct3D 11/12, Direct3D 9 and OpenGL. Overhead 0.05–0.1 % CPU for the helper. Before/after
+  verdicts and reports: [FRAME_TIMES.md](FRAME_TIMES.md).
+- Next: phase 2, general application discovery and GPU workload management, built on this as the
+  before/after gate.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

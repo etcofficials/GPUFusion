@@ -83,6 +83,24 @@ shortcut automatically.
   tooltip says which and why, usually because it was not started through GPU Fusion. *idle* means
   there is nothing to compare right now. Nothing is launched for this.
 
+### Measure a program's frame times
+
+On the **Applications** page, select a running program and click **Measure frame times…**.
+
+- **What happens:** GPU Fusion records when the program presents each frame, from Windows' own
+  graphics events. Nothing is loaded into the program, so this is safe with games that use
+  anti-cheat software.
+- **Permission:** Windows asks for administrator rights for each measurement. Approve it to measure;
+  decline it and nothing is measured. No setting is changed either way.
+- **The result:** frames per second, median and 99th-percentile frame time, "1 % low" and stutters
+  (measured), plus the program's GPU use (estimated, from GPU Fusion's monitoring).
+- **Before and after:** give a measurement a label such as "before", change something, measure again
+  as "after", and choose the first one under *Compare with*. The verdict says "faster" or "slower"
+  only when the difference is real.
+- **Keep the program on screen and drawing:** a minimized or paused game draws no frames.
+
+Details, accuracy and limits: [FRAME_TIMES.md](FRAME_TIMES.md).
+
 ## 5. One program on two GPUs: variants
 
 **Add variant…** creates another profile for the same program, e.g. "FFmpeg — Intel" and

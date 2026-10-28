@@ -20,3 +20,15 @@ target_link_libraries(GPUFusionSplitDemo PRIVATE gpufusion::options dxgi d3d11 p
 target_include_directories(GPUFusionSplitDemo PRIVATE "${CMAKE_BINARY_DIR}/generated" "${PROJECT_SOURCE_DIR}/sdk/include")
 add_dependencies(GPUFusionSplitDemo gpufusion_workloads)
 set_property(TARGET GPUFusionSplitDemo PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+# GPUFusionFrameCapture: measures frame times of running programs from outside with Windows' graphics
+# event tracing (ETW; needs administrator rights, asked for each time). No Qt, static CRT.
+add_executable(GPUFusionFrameCapture framecapture/main.cpp)
+target_link_libraries(GPUFusionFrameCapture PRIVATE gpufusion::options advapi32 psapi)
+set_property(TARGET GPUFusionFrameCapture PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+# GPUFusionFrameTest: presents frames with Direct3D 11/12, Direct3D 9 or OpenGL at a known pace and
+# reports its own present times: the ground truth the frame-time capture is checked against.
+add_executable(GPUFusionFrameTest frametest/main.cpp)
+target_link_libraries(GPUFusionFrameTest PRIVATE gpufusion::options d3d11 d3d12 d3d9 dxgi opengl32 winmm)
+set_property(TARGET GPUFusionFrameTest PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
