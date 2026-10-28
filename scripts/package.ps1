@@ -36,6 +36,26 @@ function Invoke-Native([string]$what, [scriptblock]$command) {
 }
 . (Join-Path $PSScriptRoot 'env.ps1') -Quiet
 
+# The development disk is failing (docs/TROUBLESHOOTING.md): a file's contents can change on disk
+# without its size or time changing, so `git status` does not notice. Before anything is packaged, every
+# tracked file must equal git's copy (with or without line-ending normalization); otherwise stop.
+# (This caught a LICENSE replaced by NTFS index data, which releases 1.11.1-1.13.0 had shipped.)
+Push-Location $repo
+try {
+    $entries = (& git ls-files -s -z) -split "`0" | Where-Object { $_ } | ForEach-Object {
+        $meta, $path = $_ -split "`t", 2
+        [pscustomobject]@{ Hash = ($meta -split ' ')[1]; Path = $path }
+    }
+    $paths = ($entries | ForEach-Object { $_.Path }) -join "`n"
+    $filtered = $paths | & git hash-object --stdin-paths
+    $raw = $paths | & git hash-object --no-filters --stdin-paths
+    $damaged = for ($i = 0; $i -lt $entries.Count; $i++) {
+        if ($entries[$i].Hash -ne $filtered[$i] -and $entries[$i].Hash -ne $raw[$i]) { $entries[$i].Path }
+    }
+    if ($damaged) { throw "These files differ from git (disk damage or uncommitted changes); restore them before packaging: $($damaged -join ', ')" }
+    Write-Host "Source check: $($entries.Count) tracked files equal git's copies."
+} finally { Pop-Location }
+
 if (-not $SkipBuild) {
     & (Join-Path $PSScriptRoot 'build.ps1')
     if ($LASTEXITCODE -ne 0) { throw "Build failed" }

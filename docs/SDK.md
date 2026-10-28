@@ -230,7 +230,7 @@ All outputs were compared bit for bit with the CPU reference; every one matched.
   - **The extension is built against godot-cpp `template_debug`.** A `template_release` build crashed
     the editor's import.
   - **Godot's data stays on G::** a `_sc_` file next to Godot keeps its editor data there, and the
-    script points `APPDATA` at `G:\DevTools\godotppdata` for Godot runs.
+    script points `APPDATA` at `G:\DevTools\godot\appdata` for Godot runs.
 
 **Any language, `GPUFusionSDK.dll` and `gpufusion_c.h`:**
 
