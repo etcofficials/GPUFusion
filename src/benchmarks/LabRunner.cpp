@@ -6,13 +6,17 @@
 #include "workloads/SplitHash.h"
 #include "workloads/SplitPlan.h"
 
+#include <gpufusion/scheduler.h>
+
 #include <QDir>
 #include <QJsonArray>
 
 #include <windows.h>
+#include <psapi.h>
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
 #include <thread>
 
 namespace gf::bench {
@@ -153,6 +157,14 @@ public:
             if (wall > 0)
                 r.cpuPercent = mon::MetricValue::ok(100.0 * double(processCpu100ns() - cpu0) / 1e4 / wall / std::max(1u, std::thread::hardware_concurrency()),
                                                     QStringLiteral("GPU Fusion's CPU time during the measured runs, share of all cores"));
+            PROCESS_MEMORY_COUNTERS_EX pmc{};
+            if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof pmc)) {
+                r.peakWorkingSetMB = mon::MetricValue::ok(double(pmc.PeakWorkingSetSize) / (1024.0 * 1024.0),
+                                                          QStringLiteral("GPU Fusion's peak working set so far (whole process, window included)"));
+                r.notes << QStringLiteral("GPU Fusion's memory after the measured runs: working set %1 MB, private %2 MB (peak working set so far %3 MB).")
+                               .arg(double(pmc.WorkingSetSize) / 1048576.0, 0, 'f', 0).arg(double(pmc.PrivateUsage) / 1048576.0, 0, 'f', 0)
+                               .arg(double(pmc.PeakWorkingSetSize) / 1048576.0, 0, 'f', 0);
+            }
             if (!pstates.isEmpty()) {
                 QList<mon::AdapterSample> after = samples;
                 m_nvml.sample(after);
@@ -362,6 +374,192 @@ Session runSplitExperiment(const hw::DetectionResult& detection, const LabOption
     everyoneTargets << cpuTarget;
     runMode(QStringLiteral("lab.split.dynamic-cpu"), QStringLiteral("Shared queue, GPUs + %1").arg(cpuLabel), everyone,
             { work::SplitSpec::Mode::Dynamic, {}, 16, o.chunkRows }, combined(everyoneTargets), wholeImage);
+    loop.report(QStringLiteral("Done"));
+    return session;
+}
+
+// ---- Experiment 3: adaptive multi-GPU scheduler ------------------------------------------------
+
+Session runAdaptiveExperiment(const hw::DetectionResult& detection, const LabOptions& o, const Progress& progress, const std::atomic<bool>* cancel)
+{
+    Session session = beginSession(detection);
+    const QString category = QStringLiteral("Workload Lab: adaptive multi-GPU scheduler");
+    const QList<Gpu> gpus = usableGpus(detection);
+    if (gpus.isEmpty()) {
+        session.results << failedResult(QStringLiteral("lab.split.single"), QStringLiteral("Adaptive split"), category,
+                                        QStringLiteral("No physical GPU with Direct3D 11 is available."));
+        return session;
+    }
+    QList<gpufusion::Policy> policies;
+    for (const QString& name : o.policies) {
+        gpufusion::Policy p;
+        if (gpufusion::parsePolicy(name.toStdString(), &p))
+            policies << p;
+    }
+    const int modes = int(gpus.size()) + (gpus.size() >= 2 ? int(policies.size()) + 1 : 0);
+    Loop loop(o, gpuWatch(detection), progress, cancel, modes);
+    loop.report(QStringLiteral("Computing the CPU reference image…"));
+    const std::vector<std::uint32_t> reference = work::hashRowsCpu(o.hash, 0, o.hash.height, 0);
+
+    // Devices, the image buffer and the reference are created once, before any timing.
+    std::vector<std::unique_ptr<work::D3D11HashDevice>> devices;
+    QStringList deviceErrors;
+    for (const Gpu& g : gpus) {
+        QString error;
+        devices.push_back(work::D3D11HashDevice::create(g.adapter->dxgi->luid, &error));
+        deviceErrors << error;
+    }
+    std::vector<std::uint32_t> image(reference.size(), 0u);
+    constexpr std::uint32_t kGranularity = 8; // rows
+    const QString wholeImage = QStringLiteral("time from the scheduler's start until the whole image is in CPU memory (threads, transfers, "
+                                              "waiting and any re-runs included)");
+
+    // order: GPU indexes, the primary first. failHelper: every helper batch fails (fallback check).
+    auto runMode = [&](const QString& id, const QString& name, const QList<qsizetype>& order, std::optional<gpufusion::Policy> policy,
+                       bool failHelper) {
+        BenchmarkResult r;
+        r.testId = id;
+        r.name = name;
+        r.category = category;
+        r.measures = wholeImage;
+        QStringList labels;
+        QList<Target> targets;
+        for (qsizetype i : order) {
+            labels << gpus[i].adapter->name();
+            targets << gpus[i].target;
+        }
+        r.target = order.size() == 1 ? targets.first() : combined(targets);
+        r.api = QStringLiteral("Direct3D 11 pixel shader per GPU, own thread each; GPU Fusion SDK scheduler v%1: the primary takes batches from "
+                               "the start of the image, a helper small batches from the end; rows copied to one image in CPU memory")
+                    .arg(gpufusion::kSchedulerVersion);
+        r.params = hashParamsJson(o.hash);
+        r.params.insert(QStringLiteral("workers"), QJsonArray::fromStringList(labels));
+        r.params.insert(QStringLiteral("granularityRows"), qint64(kGranularity));
+        if (policy)
+            r.params.insert(QStringLiteral("policy"), QString::fromLatin1(gpufusion::policyName(*policy)));
+        r.correctness = QStringLiteral("Bit-exact match of the assembled image with the CPU reference; every row computed exactly once");
+        for (qsizetype i : order) {
+            if (!devices[std::size_t(i)]) {
+                loop.skip(r, QStringLiteral("A Direct3D device could not be created for one of the GPUs: %1").arg(deviceErrors.join(QStringLiteral(" ")).trimmed()));
+                session.results << r;
+                return;
+            }
+        }
+        const std::size_t n = std::size_t(order.size());
+        gpufusion::Balancer balancer(n, policy.value_or(gpufusion::Policy::Conservative), kGranularity);
+        int splitRuns = 0, iterations = 0;
+        gpufusion::Plan fixed; // single-GPU and fallback modes: the same plan every run
+        fixed.granularity = kGranularity;
+        fixed.enabled.assign(n, char(1));
+        fixed.share.assign(n, 0.0);
+        fixed.batch.assign(n, 0u);
+        fixed.share[0] = n == 1 ? 1.0 : 0.85;
+        fixed.batch[0] = gpufusion::detail::roundUp(o.hash.height * fixed.share[0] / 8, kGranularity);
+        for (std::size_t d = 1; d < n; ++d) {
+            fixed.share[d] = 0.15 / double(n - 1);
+            fixed.batch[d] = gpufusion::detail::roundUp(o.hash.height * fixed.share[d] / 12, kGranularity);
+        }
+        loop.run(r, [&](RunSample& s, QString* error) {
+            const gpufusion::Plan plan = policy ? balancer.plan(o.hash.height) : fixed;
+            std::fill(image.begin(), image.end(), 0xDEADBEEFu); // missing rows cannot pass the check
+            QString workError;
+            const gpufusion::RunReport rep = gpufusion::run(o.hash.height, plan, [&](gpufusion::Batch& b) {
+                if (failHelper && b.device != 0)
+                    return false;
+                double computeMs = 0, readbackMs = 0;
+                const QString e = devices[std::size_t(order[qsizetype(b.device)])]->computeInto(
+                    o.hash, b.first, b.count, image.data() + std::size_t(b.first) * o.hash.width, &computeMs, &readbackMs);
+                b.transferMs = readbackMs;
+                if (!e.isEmpty() && workError.isEmpty() && b.device == 0)
+                    workError = e;
+                return e.isEmpty();
+            }, balancer.unitsPerMs());
+            if (policy)
+                balancer.record(plan, rep);
+            if (!rep.ok) {
+                *error = QString::fromStdString(rep.error) + (workError.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(workError));
+                return false;
+            }
+            s.durationMs = rep.wallMs;
+            s.correct = rep.exactCoverage && work::firstMismatch(image, reference) < 0;
+            s.note = QString::fromStdString(plan.reason);
+            double scheduleMs = 0;
+            for (std::size_t d = 0; d < n; ++d) {
+                const gpufusion::DeviceReport& dr = rep.devices[d];
+                const QString k = QStringLiteral("w%1.").arg(d);
+                s.metrics.insert(k + QStringLiteral("rowsPercent"), 100.0 * dr.units / o.hash.height);
+                s.metrics.insert(k + QStringLiteral("busyMs"), dr.busyMs);
+                s.metrics.insert(k + QStringLiteral("computeMs"), dr.workMs - dr.transferMs);
+                s.metrics.insert(k + QStringLiteral("readbackMs"), dr.transferMs);
+                s.metrics.insert(k + QStringLiteral("batches"), dr.batches);
+                if (d > 0)
+                    s.metrics.insert(k + QStringLiteral("rerunRows"), rep.devices[0].rerunUnits);
+                scheduleMs += dr.scheduleMs;
+            }
+            s.metrics.insert(QStringLiteral("split"), plan.multi() ? 1.0 : 0.0);
+            s.metrics.insert(QStringLiteral("overheadMs"), rep.overheadMs());
+            s.metrics.insert(QStringLiteral("scheduleMs"), scheduleMs);
+            ++iterations;
+            splitRuns += plan.multi() ? 1 : 0;
+            return true;
+        });
+        if (policy && r.status == Status::Completed) {
+            // iterations include the warm-up runs; the samples are the measured ones.
+            int measuredSplits = 0;
+            for (const RunSample& s : r.samples)
+                measuredSplits += s.metrics.value(QStringLiteral("split")) > 0 ? 1 : 0;
+            r.notes.prepend(QStringLiteral("Runs where the helper took part: %1 of %2 measured (%3 of %4 including the warm-up).")
+                                .arg(measuredSplits).arg(r.samples.size()).arg(splitRuns).arg(iterations));
+            for (std::size_t d = 1; d < n; ++d) {
+                const gpufusion::Balancer::Helper& h = balancer.helper(d);
+                QString line = QStringLiteral("%1 after the last run: %2, next planned share %3")
+                                   .arg(labels[qsizetype(d)], h.enabled ? QStringLiteral("in use") : QStringLiteral("not used"))
+                                   .arg(100.0 * h.share, 0, 'f', 1);
+                line += QStringLiteral(" %");
+                if (!h.note.empty())
+                    line += QStringLiteral(" — ") + QString::fromStdString(h.note);
+                r.notes.insert(1, line + u'.');
+                r.params.insert(QStringLiteral("helperEnabledAtEnd"), h.enabled);
+            }
+            if (balancer.baselineMsPerUnit() > 0)
+                r.notes.insert(1, QStringLiteral("Primary alone, as learned by the Balancer: %1 ms per row; splits: %2 ms per row.")
+                                      .arg(balancer.baselineMsPerUnit(), 0, 'f', 4).arg(balancer.splitMsPerUnit(), 0, 'f', 4));
+        }
+        session.results << r;
+    };
+
+    QList<double> singleMs;
+    for (qsizetype i = 0; i < gpus.size(); ++i) {
+        runMode(QStringLiteral("lab.split.single"), QStringLiteral("%1 alone").arg(gpus[i].adapter->name()), { i }, std::nullopt, false);
+        const BenchmarkResult& r = session.results.last();
+        singleMs << (r.status == Status::Completed && r.correct.value_or(false) ? r.duration.mean : 0.0);
+    }
+    if (gpus.size() >= 2) {
+        // The primary: the fastest GPU alone in this session (normally the discrete GPU); if none
+        // completed, the discrete GPU.
+        qsizetype primary = -1;
+        for (qsizetype i = 0; i < gpus.size(); ++i)
+            if (singleMs[i] > 0 && (primary < 0 || singleMs[i] < singleMs[primary]))
+                primary = i;
+        if (primary < 0) {
+            primary = 0;
+            for (qsizetype i = 0; i < gpus.size(); ++i)
+                if (gpus[i].adapter->classification.value == hw::AdapterClass::Discrete)
+                    primary = i;
+        }
+        QList<qsizetype> order{ primary };
+        for (qsizetype i = 0; i < gpus.size(); ++i)
+            if (i != primary)
+                order << i;
+        const QString primaryName = gpus[primary].adapter->name();
+        for (gpufusion::Policy p : policies) {
+            const QString policyText = QString::fromLatin1(gpufusion::policyName(p));
+            runMode(QStringLiteral("lab.adaptive.%1").arg(policyText),
+                    QStringLiteral("Adaptive, %1 policy (%2 first)").arg(policyText, primaryName), order, p, false);
+        }
+        runMode(QStringLiteral("lab.adaptive.fallback"), QStringLiteral("Fallback: helper fails, %1 re-runs its rows").arg(primaryName), order,
+                std::nullopt, true);
+    }
     loop.report(QStringLiteral("Done"));
     return session;
 }

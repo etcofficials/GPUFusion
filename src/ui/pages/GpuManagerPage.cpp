@@ -237,14 +237,19 @@ GpuManagerPage::GpuManagerPage(AppContext& context, QWidget* parent) : QWidget(p
     // --- what the modes mean ---------------------------------------------------------------------
     auto* aboutCard = new Card(tr("What GPU Fusion can and cannot do"));
     aboutCard->body()->addWidget(note(
-        tr("<b>A – choose the GPU a program renders on:</b> Windows' per-app preference where it works on this PC (verified with the probe), "
-           "otherwise the choice is passed to the program when GPU Fusion starts it.<br>"
-           "<b>B – different GPUs for different programs:</b> one profile per program.<br>"
-           "<b>C – independent work on both GPUs at once:</b> separate programs or jobs, one per GPU.<br>"
-           "<b>D – one program dividing its own work between GPUs:</b> only programs built for it, e.g. with the GPU Fusion SDK.<br>"
-           "<b>E – one rendering workload split across GPUs:</b> needs Direct3D 12 on every GPU and the program's own support; "
+        tr("<b>Automatic:</b> Windows and the program choose the GPU, as without GPU Fusion.<br>"
+           "<b>Integrated GPU / Discrete GPU:</b> one GPU for the whole program — through Windows' per-app preference where it works "
+           "on this PC (verified with the probe), otherwise through the program's own GPU option or the SDK when GPU Fusion starts it. "
+           "If the program still runs on the other GPU, the GPU profile column and Verify say so.<br>"
+           "<b>Both GPUs (SDK programs):</b> both GPUs are offered to a program that integrates the GPU Fusion SDK, which then divides "
+           "its own work. Other programs — games such as Roblox or Minecraft included — ignore the offer and run on one GPU, as in Automatic.<br>"
+           "<b>Independent job batches</b> (Workload Lab → Job batches, <code>--dispatch</code>): many separate jobs, each one on one GPU.<br>"
+           "<b>Split workload</b> (Workload Lab → Adaptive split, the SDK scheduler): GPU Fusion's own test workload, or an SDK program's, "
+           "divided into independent units across both GPUs — the GT 730 does most of it, the Intel GPU only as much as measurably helps.<br>"
+           "<b>Not possible:</b> splitting one program's rendering across GPUs needs Direct3D 12 on every GPU and the program's own support; "
            "GPU Fusion cannot add it to a program.<br>"
-           "Both GPUs showing activity does not by itself mean a program got faster. GPU Fusion never injects code into or patches programs.")));
+           "Both GPUs showing activity does not by itself mean that work was split or got faster; only a measured comparison with one GPU "
+           "alone shows that. GPU Fusion never injects code into or patches programs.")));
     auto* guide = new QPushButton(tr("Open user guide"));
     guide->setToolTip(tr("Step by step: choosing a program's GPU, its own GPU option, shortcuts, checking, variants, backup"));
     auto* guideRow = new QHBoxLayout;
@@ -753,8 +758,7 @@ void GpuManagerPage::launchSelected()
         return;
     QString error;
     const auto pid = profiles::launchProfile(*p, profiles::selectableGpus(*d), &error);
-    m_result->setText(pid ? tr("Started %1 (process %2) in mode %3.").arg(profiles::displayName(*p).toHtmlEscaped()).arg(*pid).arg(profiles::modeText(p->mode))
-                          : tr("Could not start %1: %2").arg(p->name, error).toHtmlEscaped());
+    m_result->setText(pid ? profiles::launchMessage(*p, *pid).toHtmlEscaped() : tr("Could not start %1: %2").arg(p->name, error).toHtmlEscaped());
 }
 
 void GpuManagerPage::verifySelected(int seconds, bool confirm)

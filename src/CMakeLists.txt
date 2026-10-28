@@ -96,6 +96,9 @@ add_library(gpufusion_benchmarks STATIC
     benchmarks/LabRunner.cpp benchmarks/LabRunner.h
 )
 target_link_libraries(gpufusion_benchmarks PUBLIC gpufusion_monitoring gpufusion_preferences gpufusion_workloads PRIVATE gpufusion::options psapi)
+# The adaptive split uses the SDK's scheduler (sdk/include/gpufusion/scheduler.h): one implementation
+# for GPU Fusion's own workloads and for programs that integrate the SDK.
+target_include_directories(gpufusion_benchmarks PUBLIC "${PROJECT_SOURCE_DIR}/sdk/include")
 
 # ---- profiles: generic per-application GPU profiles, discovery, apply/launch/verify -------
 add_library(gpufusion_profiles STATIC

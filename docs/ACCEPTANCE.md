@@ -157,7 +157,28 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Profiles survive the loss of the data drive | ✔ (when a backup folder on another drive is set) | automatic backup after every change; `tst_profiles::automaticBackup`; same-drive warning |
 | Nothing written without the user's choice | ✔ | off by default; only the chosen folder; other files there never touched |
 
+## 1.12 — honest "Both GPUs" and the adaptive multi-GPU scheduler
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Both GPUs perform demonstrable useful work for at least one supported split workload | ✔ | adaptive hash split: the Intel GPU computed 12–13 % of the rows at standard and heavy size; images bit-exact (`--run-lab adaptive`, `tst_lab_live::adaptiveSchedulerEndToEnd`) |
+| Combined output matches the single-GPU reference | ✔ | Lab: bit-exact against the CPU reference in every run; demo: identical to the primary GPU's image, which is checked against the CPU on sample rows |
+| No unit silently omitted or duplicated | ✔ | exactly-once accounting in `run()`; `tst_sdk::everyUnitExactlyOnce` (hit counts per unit); rows add up to 100 % in every Lab run |
+| The scheduler can disable Intel when it hurts | ✔ | `tst_sdk::balancerAdaptsToMeasuredResults`; measured: at quick size the conservative and balanced policies switched the Intel GPU off |
+| Fallback when Intel fails or is unavailable | ✔ | failed helper batches re-run on the GT 730, output correct (`lab.adaptive.fallback`, `tst_sdk::helperFailureFallsBackToThePrimary`); an adapter without a device is skipped with its reason |
+| No speed-up claimed without evidence | ✔ | every verdict uses the significance rule against the fastest GPU alone; measured 1.14× (standard, heavy) and 1.06× (quick, performance policy) — see [MULTI_GPU_SCHEDULER.md](MULTI_GPU_SCHEDULER.md) |
+| Low overhead | ✔ | scheduler's own time ≤ 0.02 ms per run; 2–8 % of all cores during adaptive runs (one quick-size mode 19 %, cause not determined); idle 0.02 % with a 50 MB working set |
+| Both shows ✓ only when the program's own work is on two GPUs | ✔ | `tst_processtable` (Both: one GPU → "One GPU only", two → "✓ Both GPUs active") |
+| Launch messages do not claim GPU use | ✔ | `tst_profiles::launchMessagesAreHonest`; launches logged |
+| An SDK program verified on both GPUs | ✔ | `tst_splitdemo_live::bothProfileIsVerifiedOnBothGpus` (GPUFusionSplitDemo in a Both profile, no Windows value) |
+| Roblox / Minecraft split across GPUs | ✘ (not possible) | neither integrates the SDK; splitting a game's rendering needs D3D12 on both GPUs — [GPU_SELECTION.md](GPU_SELECTION.md#roblox-and-minecraft) |
+| Existing single-GPU modes still work | ✔ (without the registry tests) | the 29 non-registry suites pass; the 6 registry-labelled suites (which write and restore the probe's own Windows GPU preference) were not run for 1.12, because changing Windows GPU preferences was not authorised for this phase |
+
 ## Tests at release
+
+1.12.0: 35 CTest entries; the 29 that change no Windows setting were run and all pass with
+reference-machine expectations (290 QtTest results including init/cleanup, 0 failed, 0 skipped). The 6
+registry-labelled entries were not run for this release (2026-10-28).
 
 1.11.1: 34 CTest entries, 240 cases, all passing with reference-machine expectations; fixes for the 10
 findings of an independent code review (2026-10-26).

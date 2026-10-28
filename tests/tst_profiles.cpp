@@ -421,11 +421,43 @@ private Q_SLOTS:
         QCOMPARE(env.value(QStringLiteral("GPUFUSION_MODE")), QStringLiteral("both"));
         QCOMPARE(env.value(QStringLiteral("GPUFUSION_ADAPTERS")), kNvidia.luid + u',' + kIntel.luid);
         QCOMPARE(env.value(QStringLiteral("GPUFUSION_PROFILE")), p.id);
+        QCOMPARE(env.value(QStringLiteral("GPUFUSION_ENV_VERSION")), QStringLiteral("1"));
         p.shareGpuChoiceWithApp = false;
         QVERIFY(launchEnvironment(p, kGpus).isEmpty());
 
         p.arguments = QStringLiteral("--render 7 \"C:\\My Files\\in.mp4\"");
         QCOMPARE(profileArguments(p, kGpus), (QStringList{ QStringLiteral("--render"), QStringLiteral("7"), QStringLiteral("C:\\My Files\\in.mp4") }));
+    }
+
+    // A launch message says what was passed and that a started process proves nothing about its GPU;
+    // Both never reads as "running on both GPUs". Store/Xbox packages get a caveat.
+    void launchMessagesAreHonest()
+    {
+        AppProfile p = newProfile(QStringLiteral("C:\\Tools\\app.exe"));
+        p.mode = GpuMode::Both;
+        const QString both = launchMessage(p, 42);
+        QVERIFY2(both.contains(QStringLiteral("process 42")) && both.contains(QStringLiteral("only programs that integrate the GPU Fusion SDK use them")),
+                 qPrintable(both));
+        QVERIFY(both.contains(QStringLiteral("does not show which GPU it uses")));
+        QVERIFY(!both.contains(QStringLiteral("in mode")));
+        p.mode = GpuMode::Integrated;
+        QVERIFY(launchMessage(p, 7).contains(QStringLiteral("asks for")));
+        QVERIFY(launchCaveats(p).isEmpty());
+
+        QVERIFY(isPackagedInstall(QStringLiteral("G:\\XboxGames\\Roblox\\Content\\RobloxPlayerBeta.exe")));
+        QVERIFY(isPackagedInstall(QStringLiteral("C:\\Program Files\\WindowsApps\\Vendor.App_1.0_x64__abc\\app.exe")));
+        QVERIFY(isPackagedInstall(QStringLiteral("G:\\WpSystem\\S-1-5-21\\AppData\\Local\\Packages\\X\\LocalCache\\java\\bin\\javaw.exe")));
+        QVERIFY(!isPackagedInstall(QStringLiteral("C:\\Tools\\app.exe")));
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString exe = dir.filePath(QStringLiteral("game.exe"));
+        QVERIFY(!isPackagedInstall(exe));
+        QFile manifest(dir.filePath(QStringLiteral("MicrosoftGame.config")));
+        QVERIFY(manifest.open(QIODevice::WriteOnly));
+        manifest.close();
+        QVERIFY(isPackagedInstall(exe));
+        p.exePath = exe;
+        QVERIFY(launchMessage(p, 7).contains(QStringLiteral("Microsoft Store / Xbox package")));
     }
 
     // ---- GPU placeholders + known options -----------------------------------------------------------
@@ -518,8 +550,12 @@ private Q_SLOTS:
         QCOMPARE(r.outcome, QStringLiteral("not-applied"));
         QCOMPARE(evaluateProfileEvidence(nvOnly, GpuMode::Automatic, kGpus, &r).outcome, UsageOutcome::Observed);
         QVERIFY(!r.confirmed);                                      // nothing was requested
-        evaluateProfileEvidence(nvOnly, GpuMode::Both, kGpus, &r);
+        const UsageVerdict oneOfBoth = evaluateProfileEvidence(nvOnly, GpuMode::Both, kGpus, &r);
         QVERIFY(!r.confirmed);                                      // one GPU is not both
+        QCOMPARE(r.outcome, QStringLiteral("one-gpu"));
+        QVERIFY2(oneOfBoth.headline.startsWith(QStringLiteral("One GPU only")) && oneOfBoth.headline.contains(QStringLiteral("GT 730")),
+                 qPrintable(oneOfBoth.headline));
+        QVERIFY(!oneOfBoth.headline.contains(QStringLiteral("Confirmed")));
 
         UsageEvidence intelOnly = evidence();
         addWork(intelOnly, kIntelLuid, QStringLiteral("Engine 0"), 80);

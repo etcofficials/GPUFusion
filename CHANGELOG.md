@@ -1,5 +1,72 @@
 # Changelog
 
+## 1.12.0 — 2026-10-28
+
+Real multi-GPU work distribution, and honest reporting of "Both GPUs". See
+[docs/MULTI_GPU_SCHEDULER.md](docs/MULTI_GPU_SCHEDULER.md) for how it works and every measurement.
+
+**Honest "Both GPUs"**
+
+- The mode is now called **Both GPUs (SDK programs)**. It offers both GPUs to programs that
+  integrate the SDK; every other program, games included, runs on one GPU as in Automatic.
+- **Live check fixed.** In Both mode the Applications page showed ✓ when the program worked on only
+  one GPU. It now shows **✓ Both GPUs active** only while the program's own work is on two GPUs, and
+  **One GPU only (GPU)** otherwise.
+- **Verification** of a Both profile that used one GPU now says "One GPU only: …", recorded as
+  `one-gpu`. It never says "Confirmed".
+- **Launch message.** "Started X (process N) in mode Both GPUs" became a message that says what was
+  passed, and that a started process does not show which GPU it uses. Every launch is logged with
+  its arguments and variables.
+- **Packaged programs.** Launching a Microsoft Store / Xbox package (WindowsApps, XboxGames,
+  WpSystem, or a package manifest next to the program) warns that its GPU option and the SDK
+  variables may not reach it.
+- The GPU Manager explains the six modes: Automatic, Integrated, Discrete, Both (SDK), Independent
+  job batches, Split workload.
+
+**Adaptive multi-GPU scheduler (new)**
+
+- **Workload Lab → Adaptive multi-GPU scheduler**, also `--run-lab adaptive [--lab-policy …]`. The
+  fastest GPU (the GT 730) does most of the hash image, and the Intel GPU helps with small batches
+  from the other end: only up to its measured share, and never a batch it would finish after the
+  GT 730. Three policies: conservative, balanced and performance. The scheduler compares itself
+  with the GT 730 alone and switches the Intel GPU off when splitting is not faster.
+- **Measured on the reference PC, 10 runs per mode:**
+  - standard size: 1.14× faster than the GT 730 alone (63.8 → 55.5 ms median);
+  - heavy size: 1.14× (243.4 → 210.7 ms);
+  - quick size: 1.06× with the performance policy; the conservative and balanced policies switched
+    the Intel GPU off there.
+  - The Intel GPU did 12–13 % of the rows. Every image was bit-exact, and the scheduler's own time
+    was ≤ 0.02 ms per run.
+- **Fallback.** If a helper's batch fails, the GT 730 re-runs its rows and the output stays complete
+  and correct (checked in the Lab and in tests).
+
+**SDK 2**
+
+- New `gpufusion/d3d11.h`: capabilities of each offered adapter (feature level, compute shaders,
+  memory), and one device per adapter.
+- New `gpufusion/scheduler.h`: the scheduler and Balancer above, with per-device units, times,
+  transfers and scheduling cost, and exactly-once accounting. It is lock-free and needs only the
+  standard library.
+- **Versioned variables.** GPU Fusion now sets `GPUFUSION_ENV_VERSION=1`. A program built with SDK 2
+  ignores a newer format instead of misreading it.
+- **`GPUFusionSplitDemo.exe`** (shipped next to GPUFusion.exe) is an example program that integrates
+  the SDK. It measures each GPU alone, then the adaptive split, checks every image and prints a JSON
+  report with a verdict. Given a Both profile, GPU Fusion verifies it on both GPUs.
+
+**Lighter**
+
+- GPU waits sleep on a DXGI event instead of spinning. In the demo this cut CPU use from 25 % to
+  2.5 % of all cores, at the same speed.
+- The Workload Lab's GPU workers reuse their render target for every batch size.
+- Lab results now record GPU Fusion's memory (working set, private, peak).
+
+**Tests**
+
+New `tst_splitdemo_live`. Added scheduler and Balancer cases to `tst_sdk` (simulated devices, so
+they run on CI), adaptive analysis to `tst_labmodel`, the end-to-end adaptive experiment to
+`tst_lab_live`, the adaptive panel to `tst_benchmarks_ui`, and Both-mode live checks and launch
+messages to `tst_processtable` and `tst_profiles`.
+
 ## 1.11.1 — 2026-10-26
 
 Fixes from an independent code review of everything since 1.1. All ten findings were confirmed and

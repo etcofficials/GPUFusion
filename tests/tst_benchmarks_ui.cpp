@@ -11,6 +11,7 @@
 #include "ui/pages/BenchmarksPage.h"
 #include "ui/pages/WorkloadLabPage.h"
 #include "benchmarks/LabRunner.h"
+#include "benchmarks/LabModel.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -122,7 +123,7 @@ private Q_SLOTS:
             if (b->text() == QLatin1StringView("Run experiment"))
                 runs << b;
         }
-        QCOMPARE(runs.size(), 2);
+        QCOMPARE(runs.size(), 3); // split compute, adaptive scheduler, video decoding
         QVERIFY(runs[0]->isEnabled());
 
         QSignalSpy finished(&lab, &bench::BenchmarkService::finished);
@@ -139,6 +140,29 @@ private Q_SLOTS:
             QCOMPARE(table->item(r, 5)->text(), QStringLiteral("Correct"));
         const auto labels = page.findChildren<QLabel*>();
         QVERIFY(std::any_of(labels.begin(), labels.end(), [](QLabel* l) { return l->text().contains(QStringLiteral("Combining")); }));
+
+        // The adaptive scheduler panel (second): quick size, one policy; every mode's image correct and
+        // a headline that compares with the best GPU alone.
+        const QList<QComboBox*> combos = page.findChildren<QComboBox*>();
+        for (QComboBox* c : combos) {
+            if (c->accessibleName() == QLatin1StringView("Adaptive scheduler workload size"))
+                c->setCurrentIndex(c->findData(QStringLiteral("quick")));
+            if (c->accessibleName() == QLatin1StringView("Scheduling policy"))
+                c->setCurrentIndex(c->findData(QStringLiteral("conservative")));
+        }
+        runs[1]->click();
+        QVERIFY(!runs[0]->isEnabled());
+        QVERIFY(finished.wait(120000));
+        QTRY_VERIFY(runs[0]->isEnabled() && runs[1]->isEnabled());
+        QCOMPARE(lab.history().size(), 2);
+        const bench::Session& adaptive = lab.history().first();
+        QCOMPARE(bench::labKind(adaptive), QStringLiteral("adaptive"));
+        QTableWidget* adaptiveTable = page.findChildren<QTableWidget*>().at(1);
+        QCOMPARE(adaptiveTable->rowCount(), adaptive.results.size());
+        for (int r = 0; r < adaptiveTable->rowCount(); ++r)
+            QCOMPARE(adaptiveTable->item(r, 5)->text(), QStringLiteral("Correct"));
+        const auto after = page.findChildren<QLabel*>();
+        QVERIFY(std::any_of(after.begin(), after.end(), [](QLabel* l) { return l->text().contains(QStringLiteral("adaptive scheduler")); }));
     }
 };
 

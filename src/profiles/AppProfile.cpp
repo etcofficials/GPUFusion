@@ -29,7 +29,7 @@ QString modeText(GpuMode m)
     case GpuMode::Automatic:  return QStringLiteral("Automatic");
     case GpuMode::Integrated: return QStringLiteral("Integrated GPU");
     case GpuMode::Discrete:   return QStringLiteral("Discrete GPU");
-    case GpuMode::Both:       return QStringLiteral("Both GPUs");
+    case GpuMode::Both:       return QStringLiteral("Both GPUs (SDK programs)");
     }
     return {};
 }
@@ -178,7 +178,8 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
         c.mechanism = QStringLiteral("Launch through GPU Fusion with both GPUs passed to the program (GPUFUSION_ADAPTERS)");
         c.status = ModeStatus::NeedsAppSupport;
         c.summary = QStringLiteral("Only programs that integrate the GPU Fusion SDK (or otherwise divide their own work between GPUs) can "
-                                   "use both; for other programs this mode behaves like the default.");
+                                   "use both; for any other program, games included, this mode behaves like Automatic: one GPU, chosen by "
+                                   "Windows. GPU Fusion does not split another program's work.");
         c.reasons << QStringLiteral("Splitting one rendering workload across both GPUs (class E): %1").arg(in.dualGpu.cases.value(0))
                   << in.dualGpu.verdict;
         c.reasons.append(in.dualGpu.evidence);
@@ -186,7 +187,11 @@ ModeCapability assessMode(const AppProfile& profile, GpuMode mode, const Capabil
             c.reasons.prepend(QStringLiteral("Last verification (%1): %2").arg(lv->time.toString(QStringLiteral("yyyy-MM-dd HH:mm")), lv->headline));
             if (lv->outcome == QLatin1StringView("partly") || lv->confirmed) {
                 c.status = ModeStatus::Verified;
-                c.summary = QStringLiteral("Verified: both GPUs did work for this program.");
+                c.summary = QStringLiteral("Verified: both GPUs did work for this program. That alone does not show that its work was split "
+                                           "or that it got faster; only a measured comparison with one GPU shows that.");
+            } else if (lv->outcome == QLatin1StringView("one-gpu")) {
+                c.summary = QStringLiteral("Last check: this program used one GPU only — it does not use the second GPU it was offered. "
+                                           "For it, this mode behaves like Automatic.");
             }
         }
         return c;

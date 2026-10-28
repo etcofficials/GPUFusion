@@ -136,6 +136,8 @@ profile it now compares that with the profile, **without launching anything**:
 |---|---|
 | ✓ *mode* | working on a GPU its profile (or one of its variants) asks for |
 | ✗ *mode* | working on another GPU (or the software renderer); the tooltip says which and why |
+| ✓ Both GPUs active · *mode* | (1.12) a Both profile, and the program's **own** work is on two GPUs right now. This does not show that its work was split or that it got faster. |
+| One GPU only (*GPU*) · *mode* | (1.12) a Both profile, but the program works on one GPU. Both GPUs were offered; the program does not use the second one, which is the normal case for programs without the SDK. Before 1.12 this case showed ✓. |
 | *mode* · idle | no GPU work right now, so nothing to compare |
 | Automatic | its profile does not ask for a GPU |
 
@@ -288,6 +290,25 @@ themselves (in their own settings) can use the Intel GPU, and GPU Fusion verifie
 
 ## Dual-GPU use (the "Both GPUs" choice)
 
+Since 1.12 the mode is called **Both GPUs (SDK programs)**, and every place that reports on it says
+what was actually measured:
+
+- **Launch message:** "Started X (process N). Both GPUs were offered to it; only programs that
+  integrate the GPU Fusion SDK use them…". Launches are now logged with their arguments and variables.
+- **Verification of a program that used one GPU:** "One GPU only: …", recorded as `one-gpu`, never
+  "Confirmed".
+- **Live check:** see the table above.
+
+The modes, as the GPU Manager explains them:
+
+| Mode | What happens |
+|---|---|
+| Automatic | Windows and the program choose the GPU |
+| Integrated GPU / Discrete GPU | one GPU for the whole program: Windows' preference where it works here (GT 730 only), otherwise the program's own GPU option or the SDK |
+| Both GPUs (SDK programs) | both GPUs are *offered* (`GPUFUSION_ADAPTERS`); only programs that integrate the SDK use them. Others run on one GPU, as in Automatic. |
+| Independent job batches | Workload Lab → Job batches / `--dispatch`: separate jobs, each on one GPU |
+| Split workload | Workload Lab → Adaptive multi-GPU scheduler, and SDK programs: independent units of one workload over both GPUs, NVIDIA first ([MULTI_GPU_SCHEDULER.md](MULTI_GPU_SCHEDULER.md)) |
+
 | Kind | On this PC |
 |---|---|
 | One rendering workload split across both GPUs | **Not possible.** Direct3D 12 explicit multi-adapter needs D3D12 on both GPUs (the HD 2000 has none); SLI/CrossFire and Vulkan device groups need same-vendor GPUs. |
@@ -307,3 +328,20 @@ program use two GPUs**; the Workload Lab shows what is measurably possible with 
 - Undo restores the previous data and refuses to overwrite a newer external change.
 - Verification of a program launches it like the user would; nothing is injected or patched.
 - The probe verification changes only GPUFusionProbe.exe's value and restores it (also after a crash).
+
+## Roblox and Minecraft
+
+Investigated after a user saw Roblox at about 57 % 3D on the GT 730 in Both mode, while Intel showed
+0 %. Each line says how it is known.
+
+| Question | Answer |
+|---|---|
+| Does Both mode make Roblox or Minecraft use two GPUs? | **No.** Both passes adapter IDs in environment variables. Neither game reads them, so they render on one GPU as in Automatic: the GT 730, which drives the display here. *Confirmed from the source code and by the user's observation.* |
+| Is there a supported way to make either game split its rendering across these GPUs? | **No.** Splitting one game's rendering needs the game's own explicit multi-adapter support and Direct3D 12 on both GPUs; the HD 2000 has none. *Unsupported on this hardware.* |
+| Can GPU Fusion add it? | **No.** That would need code injection or patching the game, which GPU Fusion never does. |
+| Can Roblox be put on the Intel GPU? | No supported adapter option is known for the Roblox player. Windows' preference cannot select the Intel GPU here: even the minimum-power DXGI query returns the GT 730. *Inferred; GPU Fusion has never verified Roblox in Integrated mode on this PC.* |
+| Can Minecraft (Java) be put on the Intel GPU? | Minecraft Java renders with OpenGL (LWJGL in `javaw.exe`). A windowed OpenGL program uses the driver of the GPU that drives its display, the GT 730 here. *Inferred.* |
+| Do GPU Fusion's variables even reach them? | Possibly not. Roblox here is an Xbox/Store package (`G:\XboxGames\…`), and Minecraft's `javaw.exe` lives in a package folder (`…\WpSystem\…`) and is normally started by the launcher with many arguments. Launching such a program warns about this since 1.12. |
+
+What *can* use both GPUs here: GPU Fusion's own workloads (Workload Lab), independent job batches,
+and programs that integrate the SDK, such as `GPUFusionSplitDemo.exe`.

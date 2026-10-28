@@ -35,6 +35,8 @@
 #include <QSysInfo>
 #include <QTimer>
 
+#include <algorithm>
+
 namespace {
 
 void applyLoggingSettings(const gf::Settings& s)
@@ -73,10 +75,13 @@ int main(int argc, char* argv[])
         QStringLiteral("Run every available benchmark at workload size <preset> (quick, standard, heavy) with the run counts from Settings, save the session and exit. Exit code 0 only if all completed with correct output."),
         QStringLiteral("preset"));
     const QCommandLineOption labOpt(QStringLiteral("run-lab"),
-        QStringLiteral("Run Workload Lab experiment <name> (split, decode or all) with the run counts from Settings, save the session(s) and exit. Exit code 0 only if every mode completed with correct output."),
+        QStringLiteral("Run Workload Lab experiment <name> (split, decode, adaptive or all) with the run counts from Settings, save the session(s) and exit. Exit code 0 only if every mode completed with correct output."),
         QStringLiteral("name"));
     const QCommandLineOption labSizeOpt(QStringLiteral("lab-size"), QStringLiteral("With --run-lab: hash workload size (quick, standard, heavy; default standard)."),
                                         QStringLiteral("preset"), QStringLiteral("standard"));
+    const QCommandLineOption labPolicyOpt(QStringLiteral("lab-policy"),
+        QStringLiteral("With --run-lab adaptive: scheduling policies to measure, comma-separated (conservative, balanced, performance; default all three)."),
+        QStringLiteral("policies"), QStringLiteral("conservative,balanced,performance"));
     const QCommandLineOption verifyAppOpt(QStringLiteral("verify-app"),
         QStringLiteral("Start <exe> (with any arguments after --), watch which GPU its processes render on, log the staged result and exit. "
                        "Exit code 0 = the requested GPU was confirmed (or nothing was requested and GPU work was seen)."),
@@ -130,7 +135,7 @@ int main(int argc, char* argv[])
     const QCommandLineOption dispatchCompareOpt(QStringLiteral("dispatch-compare"),
         QStringLiteral("With --dispatch: measure the batch <n> times on each GPU alone and on all chosen GPUs, check outputs and report "
                        "whether all GPUs together are significantly faster."), QStringLiteral("n"));
-    cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt,
+    cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt, labPolicyOpt,
                      verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, variantOpt, exportProfilesOpt, importProfilesOpt, replaceExistingOpt, interactiveOpt, createShortcutOpt, shortcutDirOpt, launchProfileOpt, verifyProfileOpt,
                      dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
     cli.process(app);
@@ -403,7 +408,8 @@ int main(int argc, char* argv[])
                 }
                 if (cli.isSet(launchProfileOpt)) {
                     const auto pid = gf::profiles::launchProfile(*p, gpus, &error);
-                    qCInfo(lcApp).noquote() << "Launch profile" << gf::profiles::displayName(*p) << (pid ? QStringLiteral("pid %1").arg(*pid) : error);
+                    if (pid)
+                        qCInfo(lcApp).noquote() << gf::profiles::launchMessage(*p, *pid);
                     if (!pid)
                         tell(QMessageBox::Warning, QStringLiteral("%1 could not be started: %2").arg(p->name, error));
                     exitCode = pid ? 0 : 9;
@@ -540,8 +546,14 @@ int main(int argc, char* argv[])
             queue << QStringLiteral("split");
         if (which == QLatin1StringView("decode") || which == QLatin1StringView("all"))
             queue << QStringLiteral("decode");
-        if (queue.isEmpty() || !QStringList{ QStringLiteral("quick"), QStringLiteral("standard"), QStringLiteral("heavy") }.contains(size)) {
-            qCCritical(lcApp).noquote() << "Use --run-lab split|decode|all and --lab-size quick|standard|heavy";
+        if (which == QLatin1StringView("adaptive") || which == QLatin1StringView("all"))
+            queue << QStringLiteral("adaptive");
+        const QStringList policies = cli.value(labPolicyOpt).toLower().split(u',', Qt::SkipEmptyParts);
+        const bool policiesValid = !policies.isEmpty() && std::all_of(policies.begin(), policies.end(), [](const QString& p) {
+            return p == QLatin1StringView("conservative") || p == QLatin1StringView("balanced") || p == QLatin1StringView("performance");
+        });
+        if (queue.isEmpty() || !policiesValid || !QStringList{ QStringLiteral("quick"), QStringLiteral("standard"), QStringLiteral("heavy") }.contains(size)) {
+            qCCritical(lcApp).noquote() << "Use --run-lab split|decode|adaptive|all, --lab-size quick|standard|heavy and --lab-policy conservative,balanced,performance";
             gf::log::shutdown();
             return 2;
         }
@@ -549,23 +561,26 @@ int main(int argc, char* argv[])
         bool allGood = true;
         auto next = [&] {
             const gf::Settings& s = context.settings();
-            const gf::bench::LabOptions options = gf::bench::labOptions(s.benchmarkWarmupRuns, s.benchmarkMeasuredRuns, size, lab.benchmarksDir());
+            gf::bench::LabOptions options = gf::bench::labOptions(s.benchmarkWarmupRuns, s.benchmarkMeasuredRuns, size, lab.benchmarksDir());
+            options.policies = policies;
             const QString experiment = queue.takeFirst();
             const gf::hw::DetectionResult detection = *hardware.latest();
             qCInfo(lcApp).noquote() << "Workload Lab:" << experiment << "experiment, size" << size;
             lab.startJob([experiment, options, detection](const gf::bench::Progress& p, const std::atomic<bool>* c) {
+                if (experiment == QLatin1StringView("adaptive"))
+                    return gf::bench::runAdaptiveExperiment(detection, options, p, c);
                 return experiment == QLatin1StringView("split") ? gf::bench::runSplitExperiment(detection, options, p, c)
                                                                 : gf::bench::runDecodeExperiment(detection, options, p, c);
             }, s.benchmarkRetentionDays);
         };
         QObject::connect(&lab, &gf::bench::BenchmarkService::finished, &app, [&](const gf::bench::Session& session) {
             allGood = allGood && lab.lastSaveError().isEmpty();
-            bool decode = false;
-            for (const gf::bench::BenchmarkResult& r : session.results) {
+            for (const gf::bench::BenchmarkResult& r : session.results)
                 allGood = allGood && r.status == gf::bench::Status::Completed && (!r.correct.has_value() || *r.correct);
-                decode = decode || r.testId.startsWith(QLatin1StringView("lab.decode"));
-            }
-            const gf::bench::LabAnalysis analysis = decode ? gf::bench::analyzeDecode(session) : gf::bench::analyzeSplit(session);
+            const QString kind = gf::bench::labKind(session);
+            const gf::bench::LabAnalysis analysis = kind == QLatin1StringView("decode")     ? gf::bench::analyzeDecode(session)
+                                                  : kind == QLatin1StringView("adaptive") ? gf::bench::analyzeAdaptive(session)
+                                                                                          : gf::bench::analyzeSplit(session);
             qCInfo(lcApp).noquote() << analysis.headline;
             for (const QString& f : analysis.findings)
                 qCInfo(lcApp).noquote() << "  " << f;

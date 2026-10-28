@@ -293,6 +293,7 @@ Executor commandExecutor(const QString& commandTemplate, int timeoutMs)
         }
         QProcess p;
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        env.insert(QStringLiteral("GPUFUSION_ENV_VERSION"), QStringLiteral("1"));
         env.insert(QStringLiteral("GPUFUSION_MODE"), w.integrated ? QStringLiteral("integrated") : QStringLiteral("discrete"));
         env.insert(QStringLiteral("GPUFUSION_ADAPTERS"), hw::formatLuid(w.luid));
         p.setProcessEnvironment(env);

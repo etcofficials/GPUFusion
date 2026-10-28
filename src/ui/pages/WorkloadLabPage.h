@@ -15,7 +15,8 @@ namespace gf::ui {
 class AppContext;
 class BarChart;
 
-// The multi-GPU experiments: split compute (one hash image computed by both GPUs, and the CPU) and
+// The multi-GPU experiments: split compute (one hash image computed by both GPUs, and the CPU),
+// the adaptive scheduler (the SDK's NVIDIA-first scheduler with its policies and fallback) and
 // parallel video decoding (one stream per GPU). Each shows a one-sentence answer measured against
 // the best single device, the times as bars, a table with correctness and work shares, and the
 // evidence (busy engines, GPU performance states). Nothing here changes system settings.
@@ -26,7 +27,7 @@ public:
 
 private:
     struct Panel {
-        QString kind;            // "split" | "decode"
+        QString kind;            // "split" | "decode" | "adaptive"
         QPushButton* run = nullptr;
         QPushButton* cancel = nullptr;
         QProgressBar* progress = nullptr;
@@ -39,7 +40,7 @@ private:
         QLabel* findings = nullptr;
     };
 
-    QWidget* buildPanel(Panel& panel, const QString& title, const QString& description, QComboBox* size);
+    QWidget* buildPanel(Panel& panel, const QString& title, const QString& description, const QList<QPair<QString, QComboBox*>>& choices);
     void start(Panel& panel);
     void onFinished(const bench::Session& session);
     void showLatest();
@@ -47,8 +48,10 @@ private:
     void updateControls();
 
     AppContext& m_context;
-    Panel m_split, m_decode;
+    Panel m_split, m_decode, m_adaptive;
     QComboBox* m_size = nullptr;
+    QComboBox* m_adaptiveSize = nullptr;
+    QComboBox* m_policy = nullptr;
     Panel* m_running = nullptr;
     bool m_resumeMonitoring = false;
 };

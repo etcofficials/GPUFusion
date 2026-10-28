@@ -53,10 +53,6 @@ bool usable(const BenchmarkResult& r)
     return r.status == bench::Status::Completed && r.duration.n > 0 && r.correct.value_or(false);
 }
 
-bool isDecode(const bench::Session& s)
-{
-    return std::any_of(s.results.begin(), s.results.end(), [](const BenchmarkResult& r) { return r.testId.startsWith(QLatin1StringView("lab.decode")); });
-}
 
 QString tooltipFor(const BenchmarkResult& r)
 {
@@ -82,6 +78,7 @@ WorkloadLabPage::WorkloadLabPage(AppContext& context, QWidget* parent) : QWidget
 {
     m_split.kind = QStringLiteral("split");
     m_decode.kind = QStringLiteral("decode");
+    m_adaptive.kind = QStringLiteral("adaptive");
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
@@ -109,16 +106,36 @@ WorkloadLabPage::WorkloadLabPage(AppContext& context, QWidget* parent) : QWidget
     m_size->addItem(tr("Heavy — 2048 × 2048"), QStringLiteral("heavy"));
     m_size->setCurrentIndex(1);
     m_size->setAccessibleName(tr("Hash workload size"));
+    m_adaptiveSize = new QComboBox;
+    for (int i = 0; i < m_size->count(); ++i)
+        m_adaptiveSize->addItem(m_size->itemText(i), m_size->itemData(i));
+    m_adaptiveSize->setCurrentIndex(1);
+    m_adaptiveSize->setAccessibleName(tr("Adaptive scheduler workload size"));
+    m_policy = new QComboBox;
+    m_policy->addItem(tr("All three policies"), QStringLiteral("conservative,balanced,performance"));
+    m_policy->addItem(tr("Conservative — helper up to 20 %, must gain 5 %"), QStringLiteral("conservative"));
+    m_policy->addItem(tr("Balanced — helper up to 35 %, must gain 2 %"), QStringLiteral("balanced"));
+    m_policy->addItem(tr("Performance — helper up to 50 %, any gain"), QStringLiteral("performance"));
+    m_policy->setAccessibleName(tr("Scheduling policy"));
+    m_policy->setToolTip(tr("How readily the scheduler gives work to the slower GPU. In every policy the fastest GPU stays the primary, "
+                            "the helper's share follows its measured speed, and the helper is switched off when splitting is not faster."));
 
     layout->addWidget(buildPanel(m_split, tr("Split compute across GPUs"),
         tr("One image of the hash workload (512 integer hash steps per pixel) is divided between the GPUs — and in one mode the CPU — "
            "which compute their rows at the same time. Each GPU's rows are copied back to CPU memory and assembled; the result must equal "
            "the CPU reference bit for bit. Modes: each worker alone, an even split, a split in proportion to each GPU's measured speed, "
-           "and a shared queue of 32-row items."), m_size));
+           "and a shared queue of 32-row items."), { { tr("Workload size"), m_size } }));
+    layout->addWidget(buildPanel(m_adaptive, tr("Adaptive multi-GPU scheduler"),
+        tr("The same hash image, divided by GPU Fusion's adaptive scheduler (the one in the SDK, for programs that integrate it). The "
+           "fastest GPU is the primary and takes rows from the top; the other GPU helps with small batches from the bottom — only as many "
+           "as the policy and its measured speed allow, and never one it would finish after the primary. The scheduler first measures the "
+           "primary alone, then compares every split with it, and lowers the helper's share or switches it off when splitting is not "
+           "faster. Also checked: each GPU alone, and a fallback where every helper batch fails and the primary re-runs its rows."),
+        { { tr("Workload size"), m_adaptiveSize }, { tr("Policy"), m_policy } }));
     layout->addWidget(buildPanel(m_decode, tr("Parallel video decoding"),
         tr("A 10-second 1280 × 720 H.264 test video (created once with Windows' software encoder, about 5 MB in the data folder) is "
            "decoded as fast as possible: one stream on each decoder, two streams on the same GPU, and one stream on each GPU at once. "
-           "Every decoder's frames are first compared with the software decoder's — H.264 decoding is exact, so they must be identical."), nullptr));
+           "Every decoder's frames are first compared with the software decoder's — H.264 decoding is exact, so they must be identical."), {}));
     layout->addWidget(new JobBatchPanel(m_context));
     layout->addStretch(1);
 
@@ -143,16 +160,16 @@ WorkloadLabPage::WorkloadLabPage(AppContext& context, QWidget* parent) : QWidget
     updateControls();
 }
 
-QWidget* WorkloadLabPage::buildPanel(Panel& panel, const QString& title, const QString& description, QComboBox* size)
+QWidget* WorkloadLabPage::buildPanel(Panel& panel, const QString& title, const QString& description, const QList<QPair<QString, QComboBox*>>& choices)
 {
     auto* card = new Card(title);
     card->addBadge(tr("Experiment"), Card::Tone::Accent);
     card->body()->addWidget(muted(description));
 
     auto* controls = new QHBoxLayout;
-    if (size) {
-        controls->addWidget(new QLabel(tr("Workload size")));
-        controls->addWidget(size);
+    for (const auto& [label, combo] : choices) {
+        controls->addWidget(new QLabel(label));
+        controls->addWidget(combo);
     }
     panel.run = new QPushButton(tr("Run experiment"));
     panel.run->setDefault(true);
@@ -222,13 +239,15 @@ void WorkloadLabPage::updateControls()
     bench::BenchmarkService* lab = m_context.lab();
     const bool running = lab && lab->isRunning();
     const bool ready = lab && m_context.hardware().latest().has_value() && !m_context.hardware().isRunning();
-    for (Panel* p : { &m_split, &m_decode }) {
+    for (Panel* p : { &m_split, &m_decode, &m_adaptive }) {
         p->run->setEnabled(!running && ready);
         p->cancel->setEnabled(running && m_running == p);
         if (!lab)
             p->status->setText(tr("The Workload Lab is not available in this session."));
     }
     m_size->setEnabled(!running);
+    m_adaptiveSize->setEnabled(!running);
+    m_policy->setEnabled(!running);
 }
 
 void WorkloadLabPage::start(Panel& panel)
@@ -238,10 +257,13 @@ void WorkloadLabPage::start(Panel& panel)
     if (!lab || lab->isRunning() || !detection)
         return;
     const Settings& st = m_context.settings();
-    const QString preset = &panel == &m_split ? m_size->currentData().toString() : QStringLiteral("standard");
-    const bench::LabOptions options = bench::labOptions(st.benchmarkWarmupRuns, st.benchmarkMeasuredRuns, preset, lab->benchmarksDir());
+    const QString preset = &panel == &m_split      ? m_size->currentData().toString()
+                         : &panel == &m_adaptive ? m_adaptiveSize->currentData().toString()
+                                                 : QStringLiteral("standard");
+    bench::LabOptions options = bench::labOptions(st.benchmarkWarmupRuns, st.benchmarkMeasuredRuns, preset, lab->benchmarksDir());
+    options.policies = m_policy->currentData().toString().split(u',');
     const hw::DetectionResult d = *detection;
-    const bool split = &panel == &m_split;
+    const QString kind = panel.kind;
 
     m_resumeMonitoring = !m_context.monitor().isPaused();
     if (m_resumeMonitoring)
@@ -251,8 +273,11 @@ void WorkloadLabPage::start(Panel& panel)
     panel.progress->setValue(0);
     panel.progress->show();
     panel.status->setText(tr("Starting…"));
-    lab->startJob([split, options, d](const bench::Progress& progress, const std::atomic<bool>* cancel) {
-        return split ? bench::runSplitExperiment(d, options, progress, cancel) : bench::runDecodeExperiment(d, options, progress, cancel);
+    lab->startJob([kind, options, d](const bench::Progress& progress, const std::atomic<bool>* cancel) {
+        if (kind == QLatin1StringView("adaptive"))
+            return bench::runAdaptiveExperiment(d, options, progress, cancel);
+        return kind == QLatin1StringView("split") ? bench::runSplitExperiment(d, options, progress, cancel)
+                                                  : bench::runDecodeExperiment(d, options, progress, cancel);
     }, st.benchmarkRetentionDays);
     updateControls();
 }
@@ -262,7 +287,8 @@ void WorkloadLabPage::onFinished(const bench::Session& session)
     if (m_resumeMonitoring)
         m_context.monitor().setPaused(false);
     m_resumeMonitoring = false;
-    Panel* panel = m_running ? m_running : (isDecode(session) ? &m_decode : &m_split);
+    const QString kind = bench::labKind(session);
+    Panel* panel = m_running ? m_running : kind == QLatin1StringView("decode") ? &m_decode : kind == QLatin1StringView("adaptive") ? &m_adaptive : &m_split;
     m_running = nullptr;
     panel->progress->hide();
     int failed = 0, wrong = 0, cancelled = 0;
@@ -285,18 +311,18 @@ void WorkloadLabPage::showLatest()
 {
     const bench::Session* split = nullptr;
     const bench::Session* decode = nullptr;
+    const bench::Session* adaptive = nullptr;
     if (bench::BenchmarkService* lab = m_context.lab()) {
         for (const bench::Session& s : lab->history()) { // newest first
-            if (isDecode(s)) {
-                if (!decode)
-                    decode = &s;
-            } else if (!split) {
-                split = &s;
-            }
+            const QString kind = bench::labKind(s);
+            const bench::Session*& slot = kind == QLatin1StringView("decode") ? decode : kind == QLatin1StringView("adaptive") ? adaptive : split;
+            if (!slot)
+                slot = &s;
         }
     }
     showPanel(m_split, split);
     showPanel(m_decode, decode);
+    showPanel(m_adaptive, adaptive);
 }
 
 void WorkloadLabPage::showPanel(Panel& panel, const bench::Session* session)
@@ -307,11 +333,12 @@ void WorkloadLabPage::showPanel(Panel& panel, const bench::Session* session)
         w->setVisible(hasSession);
     if (!session) {
         panel.headline->setText(tr("Not run yet. The experiment takes about %1 and keeps both GPUs fully busy meanwhile.")
-                                    .arg(panel.kind == QLatin1StringView("split") ? tr("half a minute") : tr("one to two minutes")));
+                                    .arg(panel.kind == QLatin1StringView("decode") ? tr("one to two minutes") : tr("half a minute to a minute")));
         return;
     }
     const bool decode = panel.kind == QLatin1StringView("decode");
-    const bench::LabAnalysis a = decode ? bench::analyzeDecode(*session) : bench::analyzeSplit(*session);
+    const bool adaptive = panel.kind == QLatin1StringView("adaptive");
+    const bench::LabAnalysis a = decode ? bench::analyzeDecode(*session) : adaptive ? bench::analyzeAdaptive(*session) : bench::analyzeSplit(*session);
 
     QColor dot = c.textMuted;
     if (a.verdict == Difference::Verdict::Faster)
@@ -364,7 +391,7 @@ void WorkloadLabPage::showPanel(Panel& panel, const bench::Session* session)
     if (!decode && a.reference) {
         markers << BarChart::Marker{ a.reference->duration.mean, a.reference->name, false };
         for (const bench::LabRow& row : a.rows) {
-            if (row.idealMs && row.result->testId == QLatin1StringView("lab.split.balanced")) {
+            if (row.idealMs && (row.result->testId == QLatin1StringView("lab.split.balanced") || (adaptive && row.result->testId != QLatin1StringView("lab.adaptive.fallback")))) {
                 markers << BarChart::Marker{ *row.idealMs, tr("perfect split of both GPUs, no overhead"), true };
                 break;
             }

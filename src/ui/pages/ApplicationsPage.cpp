@@ -308,8 +308,9 @@ void ApplicationsPage::updateDetails()
         html += QStringLiteral("<br>");
         const profiles::LiveCheck check = m_model->profileCheck(*p);
         if (check.state != profiles::LiveCheck::State::NoProfile) {
-            const QColor tone = check.state == profiles::LiveCheck::State::Matches ? c.good
-                              : check.state == profiles::LiveCheck::State::Elsewhere ? c.warn : c.textMuted;
+            using S = profiles::LiveCheck::State;
+            const QColor tone = check.state == S::Matches || check.state == S::BothActive ? c.good
+                              : check.state == S::Elsewhere || check.state == S::OneOfBoth ? c.warn : c.textMuted;
             html += tr("GPU profile: <span style='color:%1'>%2</span><br>").arg(tone.name(), check.detail.toHtmlEscaped());
         }
         if (p->adapters.isEmpty())

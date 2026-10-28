@@ -20,7 +20,7 @@ How to do the common things, step by step. Background and measurements are in
 
 1. Open **GPU Manager**, then **Add program…** to pick a program from the Start menu, the installed
    programs or the running ones. Or use **Browse…** to choose its `.exe`.
-2. Choose a mode: **Automatic**, **Integrated GPU**, **Discrete GPU** or **Both GPUs**. Each mode shows
+2. Choose a mode: **Automatic**, **Integrated GPU**, **Discrete GPU** or **Both GPUs (SDK programs)**. Each mode shows
    its status *for this program on this PC*:
 
    | Status | Meaning |
@@ -124,3 +124,23 @@ on the page) or the built-in H.264 decoder.
   on the reference PC it is impossible, because the Intel GPU has no Direct3D 12.
 
 Command-line equivalents of everything above are listed in the [README](../README.md#running).
+
+## Using both GPUs for one workload
+
+**Both GPUs (SDK programs)** only *offers* both GPUs to a program. Programs that integrate the GPU
+Fusion SDK divide their work between them; every other program, games such as Roblox or Minecraft
+included, runs on one GPU as in Automatic. The Applications page then shows **One GPU only (…)**,
+not a check mark.
+
+To see what dividing one workload between these GPUs actually gives, use **Workload Lab → Adaptive
+multi-GPU scheduler**. Choose a size and a policy, then click *Run experiment*. GPU Fusion:
+
+1. measures each GPU alone;
+2. lets the faster GPU (the GT 730) do most of the image while the Intel GPU helps with small batches,
+   only as many as its measured speed allows;
+3. checks every image bit for bit;
+4. compares the result with the faster GPU alone.
+
+If the split is not faster, the result says so, and the scheduler stops using the Intel GPU. The
+same scheduler is in the SDK, for programs that want it. `GPUFusionSplitDemo.exe`, next to
+`GPUFusion.exe`, is a small example program you can run, or give a Both profile.

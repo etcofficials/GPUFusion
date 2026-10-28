@@ -19,9 +19,9 @@ see the **[User guide](docs/USER_GUIDE.md)**.
 | **Dashboard** | Live load, memory and sensors of every physical GPU, including WDDM 1.x GPUs that Task Manager cannot show. |
 | **GPUs** | Every adapter Windows exposes, its driver, and its tested Direct3D capabilities. |
 | **Applications** | Which process uses which GPU, live. For programs with a GPU profile: whether they are on the GPU the profile asks for (✓/✗). Nothing is launched for this. |
-| **GPU Manager** | A GPU profile for **any program**: Automatic, Integrated, Discrete or Both GPUs. For each mode it shows what that mode can do for this program on this PC, and applies the strongest mechanism that is justified: Windows' per-app preference where it is shown to work, and otherwise the program's own GPU option (placeholders such as `{luid_pair}`, `{dxgi_index}`) or the [SDK](docs/SDK.md). It can launch the program and **verify which GPU it really used**, offer to close a running instance first, create **shortcuts** that start the program through its profile, hold **variants** (several profiles for one program), **export/import** profiles, and back them up automatically to a folder you choose. |
+| **GPU Manager** | A GPU profile for **any program**: Automatic, Integrated, Discrete or Both GPUs (SDK programs: both GPUs are *offered* to programs that integrate the SDK; others run on one GPU). For each mode it shows what that mode can do for this program on this PC, and applies the strongest mechanism that is justified: Windows' per-app preference where it is shown to work, and otherwise the program's own GPU option (placeholders such as `{luid_pair}`, `{dxgi_index}`) or the [SDK](docs/SDK.md). It can launch the program and **verify which GPU it really used**, offer to close a running instance first, create **shortcuts** that start the program through its profile, hold **variants** (several profiles for one program), **export/import** profiles, and back them up automatically to a folder you choose. |
 | **GPU Preferences** | Windows' own per-app preference, what it does on this PC (measured with a probe), journalled changes with undo. |
-| **Workload Lab** | Measured experiments with both GPUs at once, plus a **job runner** for batches of independent jobs (any command line, or built-in decoding) that says whether both GPUs beat the best single one. |
+| **Workload Lab** | Measured experiments with both GPUs at once: split compute, the **adaptive multi-GPU scheduler** (NVIDIA first; the Intel GPU only gets as much work as measurably helps, and none when splitting is slower), and video decoding. It also has a **job runner** for batches of independent jobs (any command line, or built-in decoding) that says whether both GPUs beat the best single one. |
 | **Benchmarks** | Repeatable, output-checked measurements, compared only with equivalent earlier runs. |
 | **Diagnostics** | System and graphics information and an exportable, privacy-safe report. |
 
@@ -104,8 +104,9 @@ GPUFusion.exe [--data-dir <path>] [--page <id>] [--smoke-test[=<ms>]] [--screens
 | `--verify-gpu-preferences` | Run the GPU preference verification (probe only, restored), save the report, exit |
 | `--export-diagnostics <file>` | Write `<file>.md` and `<file>.json` (personal identifiers removed) and exit |
 | `--run-benchmarks <preset>` | Run every available benchmark at size `quick`, `standard` or `heavy`, save the session, exit (0 = all completed with correct output) |
-| `--run-lab <name>` | Run Workload Lab experiment `split`, `decode` or `all`, save the session(s), print the verdicts to the log, exit (0 = every mode completed with correct output) |
-| `--lab-size <preset>` | With `--run-lab`: hash workload size for the split experiment (default `standard`) |
+| `--run-lab <name>` | Run Workload Lab experiment `split`, `decode`, `adaptive` or `all`, save the session(s), print the verdicts to the log, exit (0 = every mode completed with correct output) |
+| `--lab-size <preset>` | With `--run-lab`: hash workload size for the split and adaptive experiments (default `standard`) |
+| `--lab-policy <list>` | With `--run-lab adaptive`: scheduling policies, comma-separated (`conservative`, `balanced`, `performance`; default all) |
 | `--verify-app <exe>` | Start the program (arguments after `--`), watch which GPU its processes render on, log the staged result, exit (0 = confirmed / observed) |
 | `--verify-seconds <n>` | With `--verify-app` / `--verify-profile`: how long to watch (default 20) |
 | `--apply-profile <exe> --mode <m>` | Create/update the GPU profile of any program (`automatic`, `integrated`, `discrete`, `both`; `--profile-args` for launch arguments, which may contain GPU placeholders such as `{luid_pair}` / `{dxgi_index}`; `--profile-known-option` adds the program's known GPU option), apply it, exit |
@@ -150,7 +151,7 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
 - [Compatibility](docs/COMPATIBILITY.md) · [Storage policy](docs/STORAGE_POLICY.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
 - **[User guide](docs/USER_GUIDE.md)** (also inside the app: GPU Manager → *Open user guide*)
 - **[Final report](docs/FINAL_REPORT.md)**: what was verified on the reference PC, what is inferred, what was not done
-- [GPU selection and the GPU Manager](docs/GPU_SELECTION.md) · [SDK](docs/SDK.md) · [Multi-GPU research](docs/MULTI_GPU_RESEARCH.md)
+- [GPU selection and the GPU Manager](docs/GPU_SELECTION.md) · [SDK](docs/SDK.md) · [Adaptive multi-GPU scheduler](docs/MULTI_GPU_SCHEDULER.md) · [Multi-GPU research](docs/MULTI_GPU_RESEARCH.md)
 
 ## Known limitations (current)
 
@@ -168,8 +169,9 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
   the Intel mode "only with the program's support". Programs with their own GPU option can use it when
   launched from their profile (verified: Edge, Brave, FFmpeg), as can SDK programs and dispatcher jobs.
   A browser that is already running ignores the option.
-- No setting can make an existing program use both GPUs; "Both GPUs" works only for programs that
-  divide their own work (SDK). Both GPUs showing activity does not mean the program got faster.
+- No setting can make an existing program use both GPUs; "Both GPUs (SDK programs)" works only for
+  programs that divide their own work with the SDK (GPU Fusion's `GPUFusionSplitDemo.exe`, not games
+  such as Roblox or Minecraft). Both GPUs showing activity does not mean the program got faster.
 - The job dispatcher measured at most about 10–15 % gain for decode batches here (not stable between
   sessions); a second, much slower GPU can also make a batch slower. It reports what it measures.
 - The Workload Lab's gains apply to GPU Fusion's own test workloads. GPU Fusion does not (and cannot,

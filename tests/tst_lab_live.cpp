@@ -9,6 +9,7 @@
 #include "workloads/VideoDecode.h"
 
 #include <QDir>
+#include <QJsonArray>
 #include <QTest>
 
 #include <thread>
@@ -185,6 +186,53 @@ private Q_SLOTS:
             QVERIFY(!a.headline.isEmpty());
             qInfo().noquote() << a.headline;
         }
+    }
+
+    // The adaptive scheduler on the real GPUs: every mode's image bit-exact, every row exactly once,
+    // the fastest GPU is the primary, the helper either did rows or was switched off by measurement
+    // (both are valid outcomes — never assumed faster), and the fallback re-ran the helper's rows.
+    void adaptiveSchedulerEndToEnd()
+    {
+        if (m_gpus.size() < 2)
+            QSKIP("Needs two GPUs");
+        bench::LabOptions o = bench::labOptions(0, 3, QStringLiteral("quick"), QDir::tempPath());
+        o.policies = { QStringLiteral("conservative"), QStringLiteral("performance") };
+        const bench::Session s = bench::runAdaptiveExperiment(m_detection, o, {}, nullptr);
+        QCOMPARE(bench::labKind(s), QStringLiteral("adaptive"));
+        QCOMPARE(s.results.size(), qsizetype(m_gpus.size()) + 2 + 1);
+        double singleGt = 0;
+        for (const bench::BenchmarkResult& r : s.results) {
+            QVERIFY2(r.status == bench::Status::Completed, qPrintable(r.name + u' ' + r.error));
+            QVERIFY2(r.correct.value_or(false), qPrintable(r.name));
+            if (r.testId == QLatin1StringView("lab.split.single") && r.target.vendorId == 0x10DE)
+                singleGt = r.duration.mean;
+            if (!r.testId.startsWith(QLatin1StringView("lab.adaptive.")))
+                continue;
+            const QJsonArray workers = r.params.value(QLatin1StringView("workers")).toArray();
+            QCOMPARE(workers.size(), 2);
+            if (qEnvironmentVariableIntValue("GPUFUSION_EXPECT_REFERENCE_MACHINE") == 1)
+                QVERIFY2(workers[0].toString().contains(QStringLiteral("NVIDIA")), qPrintable(workers[0].toString())); // NVIDIA first
+            if (r.testId == QLatin1StringView("lab.adaptive.fallback")) {
+                QVERIFY(r.metrics.value(QStringLiteral("w1.rerunRows")).mean > 0);
+                QCOMPARE(r.metrics.value(QStringLiteral("w1.rowsPercent")).mean, 0.0);
+                continue;
+            }
+            // Rows add up to the whole image in every run.
+            for (const bench::RunSample& sample : r.samples)
+                QVERIFY(qAbs(sample.metrics.value(QStringLiteral("w0.rowsPercent")) + sample.metrics.value(QStringLiteral("w1.rowsPercent")) - 100.0) < 1e-6);
+            const bool helped = r.metrics.value(QStringLiteral("w1.rowsPercent")).max > 0;
+            const bool switchedOff = r.params.value(QLatin1StringView("helperEnabledAtEnd")).toBool(true) == false;
+            QVERIFY2(helped || switchedOff, qPrintable(r.name));
+            QVERIFY(r.metrics.value(QStringLiteral("w1.rowsPercent")).max <= 50.0 + 1e-9); // the primary always does most
+            QVERIFY(r.cpuPercent.isOk());
+            QVERIFY(r.peakWorkingSetMB.isOk());
+        }
+        const bench::LabAnalysis a = bench::analyzeAdaptive(s);
+        QVERIFY(a.reference);
+        QVERIFY(a.verdict.has_value());
+        qInfo().noquote() << a.headline << "(GT 730 alone:" << singleGt << "ms)";
+        for (const QString& f : a.findings)
+            qInfo().noquote() << "  " << f;
     }
 
     void experimentCancels()

@@ -218,6 +218,22 @@ private Q_SLOTS:
         model.update(snapshot({ proc(1, QStringLiteral("video.exe"), { use(10, 30) }) }));
         QVERIFY2(profileText(QStringLiteral("video.exe")).startsWith(QStringLiteral("✓")), qPrintable(profileText(QStringLiteral("video.exe"))));
         QVERIFY(model.index(0, ProcessTableModel::Profile).data(Qt::ToolTipRole).toString().contains(QStringLiteral("consistent with")));
+
+        // Both GPUs: a check mark only while the program's own work is on two GPUs. Work on one GPU (a
+        // program that ignores the SDK variables, like most games) is "One GPU only", never a check mark.
+        AppProfile both = newProfile(QStringLiteral("C:\\Apps\\split.exe"));
+        both.mode = GpuMode::Both;
+        model.setProfiles({ both }, { nv, intel });
+        model.update(snapshot({ proc(5, QStringLiteral("split.exe"), { use(10, 57) }) }));
+        QVERIFY2(profileText(QStringLiteral("split.exe")).startsWith(QStringLiteral("One GPU only (GT 730)")), qPrintable(profileText(QStringLiteral("split.exe"))));
+        QVERIFY(model.index(0, ProcessTableModel::Profile).data(Qt::ToolTipRole).toString().contains(QStringLiteral("does not split another program's work")));
+        model.update(snapshot({ proc(5, QStringLiteral("split.exe"), { use(20, 30) }) }));
+        QVERIFY2(profileText(QStringLiteral("split.exe")).startsWith(QStringLiteral("One GPU only (HD Graphics)")), qPrintable(profileText(QStringLiteral("split.exe"))));
+        model.update(snapshot({ proc(5, QStringLiteral("split.exe"), { use(10, 57), use(20, 12) }) }));
+        QVERIFY2(profileText(QStringLiteral("split.exe")).startsWith(QStringLiteral("✓ Both GPUs active")), qPrintable(profileText(QStringLiteral("split.exe"))));
+        QVERIFY(model.index(0, ProcessTableModel::Profile).data(Qt::ToolTipRole).toString().contains(QStringLiteral("does not show that the program splits")));
+        model.update(snapshot({ proc(5, QStringLiteral("split.exe"), { use(10, 0, 1024), use(20, 0, 1024) }) }));
+        QVERIFY(profileText(QStringLiteral("split.exe")).endsWith(QStringLiteral("idle")));
     }
 
     // Cost of the live profile column on a busy PC: a refresh plus reading every row's profile cell

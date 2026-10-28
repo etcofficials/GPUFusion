@@ -115,3 +115,9 @@ gpufusion_add_test(tst_gpumanager_ui tst_gpumanager_ui.cpp LABELS hardware regis
 target_link_libraries(tst_gpumanager_ui PRIVATE gpufusion_ui)
 add_dependencies(tst_gpumanager_ui GPUFusionProbe)
 set_tests_properties(tst_gpumanager_ui PROPERTIES FIXTURES_REQUIRED probe_preference RUN_SERIAL TRUE TIMEOUT 180)
+# GPUFusionSplitDemo (a program that integrates the SDK) on the real GPUs: alone, all adapters with a
+# measured verdict, and a "Both GPUs" profile verified on both GPUs. No Windows setting is changed.
+gpufusion_add_test(tst_splitdemo_live tst_splitdemo_live.cpp LABELS hardware)
+target_link_libraries(tst_splitdemo_live PRIVATE gpufusion_profiles)
+add_dependencies(tst_splitdemo_live GPUFusionSplitDemo)
+set_tests_properties(tst_splitdemo_live PROPERTIES RUN_SERIAL TRUE TIMEOUT 300)

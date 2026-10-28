@@ -149,6 +149,56 @@ private Q_SLOTS:
         QVERIFY(!analyzeSplit(none).verdict);
     }
 
+    // The adaptive scheduler session: the best policy against the fastest GPU alone, the helper's
+    // share and how often it took part, split runs shown apart from baseline runs, the fallback check;
+    // a policy that ended up slower is reported as slower, never as a gain.
+    void adaptiveScheduler()
+    {
+        auto adaptive = [](const QString& id, const QString& name, QList<double> ms, QList<double> split, double helperRows) {
+            BenchmarkResult r = result(id, name, ms, { GT, HD });
+            for (qsizetype i = 0; i < r.samples.size(); ++i) {
+                r.samples[i].metrics.insert(QStringLiteral("w0.rowsPercent"), 100 - helperRows * split[i]);
+                r.samples[i].metrics.insert(QStringLiteral("w1.rowsPercent"), helperRows * split[i]);
+                r.samples[i].metrics.insert(QStringLiteral("split"), split[i]);
+                r.samples[i].metrics.insert(QStringLiteral("overheadMs"), 0.1);
+                r.samples[i].metrics.insert(QStringLiteral("scheduleMs"), 0.004);
+                r.samples[i].metrics.insert(QStringLiteral("w1.rerunRows"), id.endsWith(QLatin1StringView("fallback")) ? 16 : 0);
+            }
+            summarize(r);
+            return r;
+        };
+        Session s;
+        s.results << result(QStringLiteral("lab.split.single"), GT + QStringLiteral(" alone"), { 65, 66, 65.5, 65, 66 }, { GT }, 0x10DE)
+                  << result(QStringLiteral("lab.split.single"), HD + QStringLiteral(" alone"), { 318, 319, 318 }, { HD }, 0x8086)
+                  << adaptive(QStringLiteral("lab.adaptive.conservative"), QStringLiteral("Adaptive, conservative"), { 57, 57.5, 56.5, 57, 65.5 },
+                              { 1, 1, 1, 1, 0 }, 13)
+                  << adaptive(QStringLiteral("lab.adaptive.performance"), QStringLiteral("Adaptive, performance"), { 70, 71, 70.5, 70, 71 },
+                              { 1, 1, 1, 1, 1 }, 30)
+                  << adaptive(QStringLiteral("lab.adaptive.fallback"), QStringLiteral("Fallback"), { 66, 66.5, 66 }, { 1, 1, 1 }, 0);
+        s.results[2].notes << HD + QStringLiteral(" after the last run: in use, next planned share 20.0 % — the split was 15.0 % faster than the primary alone.");
+        QCOMPARE(labKind(s), QStringLiteral("adaptive"));
+        const LabAnalysis a = analyzeAdaptive(s);
+        QVERIFY(a.reference);
+        QCOMPARE(a.reference->name, GT + QStringLiteral(" alone"));
+        QCOMPARE(a.verdict, Difference::Verdict::Faster);
+        QVERIFY2(a.headline.startsWith(QStringLiteral("The adaptive scheduler helped: “Adaptive, conservative”")), qPrintable(a.headline));
+        QVERIFY2(a.headline.contains(HD + QStringLiteral(" computed 10.4 % of the rows")), qPrintable(a.headline));
+        QVERIFY2(a.rows[2].detail.contains(QStringLiteral("helper used in 80 % of runs")) && a.rows[2].detail.contains(QStringLiteral("split runs alone 57.0 ms")),
+                 qPrintable(a.rows[2].detail));
+        const QString all = a.findings.join(u'\n');
+        QVERIFY2(all.contains(QStringLiteral("“Adaptive, performance”: 70.5 ms (1.08× slower than NVIDIA GeForce GT 730 alone)")), qPrintable(all));
+        QVERIFY(all.contains(QStringLiteral("after the last run: in use")));
+        QVERIFY(all.contains(QStringLiteral("Fallback check")) && all.contains(QStringLiteral("re-ran 16 rows")));
+
+        // Every policy slower: the headline says so.
+        Session slow;
+        slow.results << s.results[0] << s.results[1] << s.results[3];
+        const LabAnalysis b = analyzeAdaptive(slow);
+        QCOMPARE(b.verdict, Difference::Verdict::Slower);
+        QVERIFY2(b.headline.startsWith(QStringLiteral("The adaptive scheduler was slower")), qPrintable(b.headline));
+        QCOMPARE(labKind(Session{}), QStringLiteral("split"));
+    }
+
     void decodeOnePerGpuSlowerThanBestDevice()
     {
         Session s;

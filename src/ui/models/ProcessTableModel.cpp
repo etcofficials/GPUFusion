@@ -315,8 +315,8 @@ QVariant ProcessTableModel::data(const QModelIndex& index, int role) const
         if (role == Qt::DisplayRole) return check.text;
         if (role == SortRole) return QStringLiteral("%1 %2").arg(int(check.state)).arg(check.text);
         if (role == Qt::ToolTipRole) return check.detail;
-        if (check.state == profiles::LiveCheck::State::Matches) return colors().good;
-        if (check.state == profiles::LiveCheck::State::Elsewhere) return colors().warn;
+        if (check.state == profiles::LiveCheck::State::Matches || check.state == profiles::LiveCheck::State::BothActive) return colors().good;
+        if (check.state == profiles::LiveCheck::State::Elsewhere || check.state == profiles::LiveCheck::State::OneOfBoth) return colors().warn;
         return colors().textMuted;
     }
     default:

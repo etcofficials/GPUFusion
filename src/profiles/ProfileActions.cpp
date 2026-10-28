@@ -115,6 +115,7 @@ QHash<QString, QString> launchEnvironment(const AppProfile& profile, const QList
     QHash<QString, QString> env;
     if (!profile.shareGpuChoiceWithApp)
         return env;
+    env.insert(QStringLiteral("GPUFUSION_ENV_VERSION"), QStringLiteral("1")); // format of these variables (SDK 2+ checks it)
     env.insert(QStringLiteral("GPUFUSION_MODE"), modeKey(profile.mode));
     env.insert(QStringLiteral("GPUFUSION_ADAPTERS"), requestedAdapterLuids(profile.mode, gpus).join(u','));
     env.insert(QStringLiteral("GPUFUSION_PROFILE"), profile.id);
@@ -129,7 +130,65 @@ QStringList profileArguments(const AppProfile& profile, const QList<pref::Select
 std::optional<quint32> launchProfile(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus, QString* error)
 {
     const QString exe = resolveCurrentExecutable(profile.exePath);
-    return pref::win::launchDetachedPid(exe, profileArguments(profile, gpus), error, launchEnvironment(profile, gpus));
+    const QStringList args = profileArguments(profile, gpus);
+    const QHash<QString, QString> env = launchEnvironment(profile, gpus);
+    QString localError;
+    const auto pid = pref::win::launchDetachedPid(exe, args, &localError, env);
+    if (error)
+        *error = localError;
+    QStringList vars;
+    for (auto it = env.cbegin(); it != env.cend(); ++it)
+        vars << QStringLiteral("%1=%2").arg(it.key(), it.value());
+    vars.sort();
+    if (pid)
+        qCInfo(lcPrefs).noquote() << QStringLiteral("Launched %1 (process %2) from its profile, mode %3; arguments: %4; variables: %5")
+                                         .arg(displayName(profile)).arg(*pid).arg(modeKey(profile.mode))
+                                         .arg(args.isEmpty() ? QStringLiteral("none") : args.join(u' '))
+                                         .arg(vars.isEmpty() ? QStringLiteral("none") : vars.join(QStringLiteral(" ")));
+    else
+        qCWarning(lcPrefs).noquote() << "Could not launch" << displayName(profile) << ":" << localError;
+    return pid;
+}
+
+QString launchMessage(const AppProfile& profile, quint32 pid)
+{
+    const QString started = QStringLiteral("Started %1 (process %2).").arg(displayName(profile)).arg(pid);
+    QString what;
+    switch (profile.mode) {
+    case GpuMode::Both:
+        what = QStringLiteral("Both GPUs were offered to it; only programs that integrate the GPU Fusion SDK use them, others run on one GPU as in Automatic.");
+        break;
+    case GpuMode::Automatic:
+        what = QStringLiteral("Windows and the program choose its GPU (Automatic).");
+        break;
+    default:
+        what = QStringLiteral("Its profile asks for %1.").arg(modeText(profile.mode));
+        break;
+    }
+    QStringList parts{ started, what, QStringLiteral("A started process does not show which GPU it uses: the GPU profile column on the "
+                                                     "Applications page and Verify do.") };
+    parts << launchCaveats(profile);
+    return parts.join(u' ');
+}
+
+bool isPackagedInstall(const QString& exePath)
+{
+    const QString path = QDir::fromNativeSeparators(exePath).toLower();
+    for (const char* marker : { "/windowsapps/", "/xboxgames/", "/wpsystem/" }) {
+        if (path.contains(QLatin1StringView(marker)))
+            return true;
+    }
+    const QDir dir = QFileInfo(exePath).absoluteDir();
+    return QFileInfo::exists(dir.filePath(QStringLiteral("AppxManifest.xml"))) || QFileInfo::exists(dir.filePath(QStringLiteral("MicrosoftGame.config")));
+}
+
+QStringList launchCaveats(const AppProfile& profile)
+{
+    QStringList out;
+    if (isPackagedInstall(profile.exePath))
+        out << QStringLiteral("This program is installed as a Microsoft Store / Xbox package: Windows may start it through its package, "
+                              "and a copy that is already running may take over, so its GPU option and GPU Fusion's variables may not reach it.");
+    return out;
 }
 
 mon::UsageVerdict evaluateProfileEvidence(mon::UsageEvidence e, GpuMode mode, const QList<pref::SelectableGpu>& gpus,
@@ -162,6 +221,18 @@ mon::UsageVerdict evaluateProfileEvidence(mon::UsageEvidence e, GpuMode mode, co
         v.headline.replace(QStringLiteral("Partly: "), QStringLiteral("Both GPUs used: "));
         v.details << QStringLiteral("Both GPUs did work for the program. That alone does not show that its rendering was split or faster.");
     }
+    // Both, but the program's work was on one GPU only: say so plainly (never "Confirmed" for Both).
+    const bool oneGpuOfBoth = mode == GpuMode::Both
+        && (v.outcome == mon::UsageOutcome::Confirmed || v.outcome == mon::UsageOutcome::ConfirmedUnnamed || v.outcome == mon::UsageOutcome::WrongAdapter);
+    if (oneGpuOfBoth) {
+        QStringList where;
+        for (const mon::AdapterActivity& a : v.activity)
+            where << a.name;
+        v.headline = QStringLiteral("One GPU only: the program's GPU work ran on %1. Both GPUs were offered, but the program did not use the second one.")
+                         .arg(where.isEmpty() ? e.requestedName : where.join(QStringLiteral(", ")));
+        v.details << QStringLiteral("Both GPUs mode passes both GPUs to programs that integrate the GPU Fusion SDK. Other programs ignore them "
+                                    "and run on one GPU, as in Automatic; GPU Fusion does not split another program's work.");
+    }
     if (record) {
         record->time = QDateTime::currentDateTime();
         record->mode = mode;
@@ -180,6 +251,8 @@ mon::UsageVerdict evaluateProfileEvidence(mon::UsageEvidence e, GpuMode mode, co
         case mon::UsageOutcome::NoActivity:       record->outcome = QStringLiteral("no-activity"); break;
         case mon::UsageOutcome::NotLaunched:      record->outcome = QStringLiteral("not-launched"); break;
         }
+        if (oneGpuOfBoth)
+            record->outcome = QStringLiteral("one-gpu");
         record->confirmed = mode == GpuMode::Both
             ? v.outcome == mon::UsageOutcome::BothAdapters
             : (mode != GpuMode::Automatic && (v.outcome == mon::UsageOutcome::Confirmed || v.outcome == mon::UsageOutcome::ConfirmedUnnamed));

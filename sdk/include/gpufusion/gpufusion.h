@@ -1,26 +1,39 @@
 // GPU Fusion SDK — optional integration for programs that want to honour the GPU choice made in
-// GPU Fusion, including "Both GPUs". Header-only, C++17, Windows, DXGI; MIT License.
+// GPU Fusion, including "Both GPUs". Header-only, C++17, Windows, DXGI; MIT License. Version 2.
 //
-// How it works: when GPU Fusion launches a program from its profile it sets
-//     GPUFUSION_MODE      automatic | integrated | discrete | both
-//     GPUFUSION_ADAPTERS  comma-separated adapter LUIDs "HHHHHHHH_LLLLLLLL", in order of use
-//     GPUFUSION_PROFILE   the profile id
+// How it works: when GPU Fusion launches a program from its profile (or runs it as a job of a batch)
+// it sets
+//     GPUFUSION_ENV_VERSION  1 — the format of these variables (missing: GPU Fusion before 1.12, same format)
+//     GPUFUSION_MODE         automatic | integrated | discrete | both
+//     GPUFUSION_ADAPTERS     comma-separated adapter LUIDs "HHHHHHHH_LLLLLLLL", in order of use
+//                            (in "both": the discrete GPU first — the primary — then the integrated one)
+//     GPUFUSION_PROFILE      the profile id
 // A program that includes this header asks for its adapters and creates its devices on them. A
 // program launched any other way simply gets the default adapter — nothing breaks.
 //
-//     #include <gpufusion/gpufusion.h>
+// The SDK has three headers:
+//     gpufusion.h   this one: mode, requested adapters, a weighted split
+//     d3d11.h       capabilities of each adapter and one Direct3D 11 device per adapter
+//     scheduler.h   NVIDIA-first adaptive scheduling of independent work units over those devices,
+//                   with measured per-device times, a single-device fallback and the Balancer, which
+//                   stops using a helper GPU when splitting is not measurably faster
+//
+//     #include <gpufusion/d3d11.h>
+//     #include <gpufusion/scheduler.h>
 //     Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
 //     CreateDXGIFactory1(IID_PPV_ARGS(&factory));
-//     auto adapters = gpufusion::adapters(factory.Get());      // at least one entry
-//     D3D11CreateDevice(adapters[0].Get(), D3D_DRIVER_TYPE_UNKNOWN, ...);
-//     if (gpufusion::mode() == gpufusion::Mode::Both && adapters.size() > 1) {
-//         // create a device per adapter and divide independent work, e.g.:
-//         auto parts = gpufusion::split(rows, { 5.0, 1.0 });     // weights, e.g. measured speeds
-//     }
+//     if (!gpufusion::environmentSupported()) { /* newer GPU Fusion: use the default adapter */ }
+//     auto devices = gpufusion::createDevices(gpufusion::adapters(factory.Get())); // at least one entry
+//     gpufusion::Balancer balancer(devices.size(), gpufusion::Policy::Conservative);
+//     // ... per job: balancer.plan(units) -> gpufusion::run(units, plan, work) -> balancer.record(...)
 //
-// What the SDK does NOT do: it cannot make one rendering workload run on two GPUs by itself, and it
-// cannot share resources between adapters of different vendors without a copy through system memory.
-// The program divides its own work; GPU Fusion's Workload Lab shows measured examples.
+// Programs that integrate the SDK: GPU Fusion's own GPUFusionProbe and GPUFusionSplitDemo. No other
+// program — games and browsers included — uses it unless its developers add it.
+//
+// What the SDK does NOT do: it cannot make one rendering workload run on two GPUs by itself, it does
+// not change programs that do not include it, and it cannot share resources between adapters of
+// different vendors without a copy through system memory. The program divides its own work into
+// independent units; the scheduler decides which device computes which units, and measures.
 #pragma once
 
 #include <windows.h>
@@ -37,6 +50,9 @@
 #include <vector>
 
 namespace gpufusion {
+
+inline constexpr int kSdkVersion = 2;           // this header set
+inline constexpr int kMaxEnvironmentVersion = 1; // newest GPUFUSION_ENV_VERSION this SDK understands
 
 enum class Mode { NotLaunchedByGpuFusion, Automatic, Integrated, Discrete, Both };
 
@@ -55,9 +71,23 @@ inline std::wstring luidText(const LUID& l)
 }
 } // namespace detail
 
+// The format version of GPU Fusion's variables: 0 when not launched by GPU Fusion, 1 for GPU Fusion
+// versions before the variable existed (same format).
+inline int environmentVersion()
+{
+    const std::wstring v = detail::env(L"GPUFUSION_ENV_VERSION");
+    if (!v.empty())
+        return std::wcstol(v.c_str(), nullptr, 10);
+    return detail::env(L"GPUFUSION_MODE").empty() ? 0 : 1;
+}
+// False when a newer GPU Fusion set variables in a format this SDK does not know: then ignore them.
+inline bool environmentSupported() { return environmentVersion() <= kMaxEnvironmentVersion; }
+
 // The mode GPU Fusion launched this program with.
 inline Mode mode()
 {
+    if (!environmentSupported())
+        return Mode::NotLaunchedByGpuFusion;
     const std::wstring m = detail::env(L"GPUFUSION_MODE");
     if (m == L"automatic") return Mode::Automatic;
     if (m == L"integrated") return Mode::Integrated;
@@ -70,6 +100,8 @@ inline Mode mode()
 inline std::vector<std::wstring> requestedLuids()
 {
     std::vector<std::wstring> out;
+    if (!environmentSupported())
+        return out;
     const std::wstring all = detail::env(L"GPUFUSION_ADAPTERS");
     size_t start = 0;
     while (start < all.size()) {

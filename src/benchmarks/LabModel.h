@@ -26,6 +26,12 @@ struct LabAnalysis {
 
 LabAnalysis analyzeSplit(const Session& session);
 LabAnalysis analyzeDecode(const Session& session);
+// The adaptive scheduler experiment: each policy against the fastest single GPU, with the helper's
+// share, how often it took part, the scheduler's overhead and the fallback check.
+LabAnalysis analyzeAdaptive(const Session& session);
+
+// Which experiment a Lab session holds: "split", "decode" or "adaptive".
+QString labKind(const Session& session);
 
 // "1.15× faster", "1.30× slower", "no significant difference" — for tables.
 QString describeDifference(const Difference& d);

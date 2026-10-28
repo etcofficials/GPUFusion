@@ -36,14 +36,26 @@ ApplyResult applyProfile(AppProfile& profile, pref::PreferenceManager& manager, 
 
 // Variables GPU Fusion sets when it launches a program from its profile (read by the SDK):
 //   GPUFUSION_MODE=automatic|integrated|discrete|both, GPUFUSION_ADAPTERS=<luid>[,<luid>],
-//   GPUFUSION_PROFILE=<profile id>
+//   GPUFUSION_PROFILE=<profile id>, GPUFUSION_ENV_VERSION=1 (the format of these variables)
 QHash<QString, QString> launchEnvironment(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus);
 
 // The profile's arguments, split like a command line, with GPU placeholders filled in for its mode
 // (see launchArguments).
 QStringList profileArguments(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus);
 
+// Starts the program from its profile (arguments + SDK variables) and logs what was passed. A started
+// process is not evidence of which GPU it uses: only verification or the live check shows that.
 std::optional<quint32> launchProfile(const AppProfile& profile, const QList<pref::SelectableGpu>& gpus, QString* error);
+
+// One-line, honest description of a launch for the user: what was passed, and what it does not prove.
+QString launchMessage(const AppProfile& profile, quint32 pid);
+
+// Installed as a Microsoft Store / Xbox package (WindowsApps, XboxGames, WpSystem, or a package
+// manifest next to the program): Windows may start such a program through its package, and a copy that
+// is already running may take over a new start, so arguments and SDK variables may not reach it.
+bool isPackagedInstall(const QString& exePath);
+// Plain-language caveats for launching this profile (packaged install, Both without SDK support).
+QStringList launchCaveats(const AppProfile& profile);
 
 // Launches the program from its profile, observes its process tree and evaluates the result against
 // the profile's mode (Integrated/Discrete -> that GPU; Both -> both GPUs rendering; Automatic ->

@@ -83,7 +83,7 @@ function Wait-Program([string]$exe, [string[]]$arguments, [int]$seconds, [string
 }
 if (Test-Path $portable) { Remove-Item -LiteralPath $portable -Recurse -Force }
 New-Item -ItemType Directory -Path $portable | Out-Null
-Copy-Item (Join-Path $bin 'GPUFusion.exe'), (Join-Path $bin 'GPUFusionProbe.exe') $portable
+Copy-Item (Join-Path $bin 'GPUFusion.exe'), (Join-Path $bin 'GPUFusionProbe.exe'), (Join-Path $bin 'GPUFusionSplitDemo.exe') $portable
 # Same selection as the build tree (cmake/Deploy.cmake): Widgets app, Windows platform, ico/png.
 Invoke-Native 'windeployqt' {
     windeployqt --release --no-translations --no-system-d3d-compiler --no-system-dxc-compiler --no-opengl-sw `
