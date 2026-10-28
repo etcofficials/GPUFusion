@@ -123,9 +123,23 @@ if (Test-Path (Join-Path $portable 'GPUFusion.datadir')) { throw "Development da
 # ---- launcher next to the folder ---------------------------------------------------------------
 Copy-Item (Join-Path $bin 'GPUFusionLauncher.exe') (Join-Path $release 'GPUFusion.exe') -Force
 
+# ZIPs with standard forward-slash paths (Compress-Archive in Windows PowerShell 5.1 writes backslashes,
+# which tools other than Windows' own extract as flat file names).
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+function New-Zip([string]$folder, [string]$destination) {
+    $root = Split-Path -Leaf $folder
+    $archive = [IO.Compression.ZipFile]::Open($destination, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        Get-ChildItem -LiteralPath $folder -Recurse -File | ForEach-Object {
+            $relative = $_.FullName.Substring($folder.TrimEnd([char]92).Length + 1).Replace([char]92, [char]47)
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, "$root/$relative", [IO.Compression.CompressionLevel]::Optimal)
+        }
+    } finally { $archive.Dispose() }
+}
+
 # ---- ZIP ------------------------------------------------------------------------------------------
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
-Compress-Archive -Path $portable -DestinationPath $zip -CompressionLevel Optimal
+New-Zip $portable $zip
 
 # ---- SDK ZIP: headers, shaders, the C library, examples, the Godot extension -------------------------
 $sdkZip = Join-Path $release 'GPUFusion-SDK.zip'
@@ -146,7 +160,7 @@ if (Test-Path $godotDll) { Copy-Item $godotDll (Join-Path $sdkStage 'godot\demo\
 Copy-Item (Join-Path $repo 'docs\SDK.md') $sdkStage
 Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $sdkStage 'LICENSE.txt')
 if (Test-Path $sdkZip) { Remove-Item -LiteralPath $sdkZip -Force }
-Compress-Archive -Path $sdkStage -DestinationPath $sdkZip -CompressionLevel Optimal
+New-Zip $sdkStage $sdkZip
 Remove-Item -LiteralPath $sdkStage -Recurse -Force
 
 # ---- installer -------------------------------------------------------------------------------------

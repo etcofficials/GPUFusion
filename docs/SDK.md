@@ -223,6 +223,14 @@ All outputs were compared bit for bit with the CPU reference; every one matched.
   - copies `demo/bin/gpufusion_godot.dll` and `demo/gpufusion.gdextension` into the project;
   - calls `GPUFusionCompute` for image work: heightmaps, procedural textures, filters.
 - **What it does not do:** it does not change how Godot renders.
+- **Godot 4.7.2 quirks seen here:**
+  - **The first headless `--import`** of a project with *any* GDExtension crashes Godot on exit (an empty
+    extension with no GPU Fusion code does the same); a second import and normal runs work.
+    `build-godot.ps1` retries the import once.
+  - **The extension is built against godot-cpp `template_debug`.** A `template_release` build crashed
+    the editor's import.
+  - **Godot's data stays on G::** a `_sc_` file next to Godot keeps its editor data there, and the
+    script points `APPDATA` at `G:\DevTools\godotppdata` for Godot runs.
 
 **Any language, `GPUFusionSDK.dll` and `gpufusion_c.h`:**
 
