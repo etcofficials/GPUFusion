@@ -75,6 +75,17 @@ foreach(_shader fullscreen_vs:vs_4_0 hash_ps:ps_4_0)
     list(APPEND GPUFUSION_SHADER_HEADERS "${GPUFUSION_SHADER_DIR}/${_name}.h")
 endforeach()
 
+# The SDK's sample row kernel (sdk/shaders), compiled the same way, for the SDK tools and tests.
+add_custom_command(
+    OUTPUT "${GPUFUSION_SHADER_DIR}/blur_ps.h"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${GPUFUSION_SHADER_DIR}"
+    COMMAND "${GPUFUSION_FXC}" /nologo /T ps_4_0 /E main /O3 /WX /Fh "${GPUFUSION_SHADER_DIR}/blur_ps.h" /Vn g_blur_ps
+            "${PROJECT_SOURCE_DIR}/sdk/shaders/blur_ps.hlsl"
+    DEPENDS "${PROJECT_SOURCE_DIR}/sdk/shaders/blur_ps.hlsl"
+    COMMENT "Compiling shader blur_ps (ps_4_0)"
+    VERBATIM)
+list(APPEND GPUFUSION_SHADER_HEADERS "${GPUFUSION_SHADER_DIR}/blur_ps.h")
+
 add_library(gpufusion_workloads STATIC
     workloads/HashKernel.cpp workloads/HashKernel.h
     workloads/D3D11HashDevice.cpp workloads/D3D11HashDevice.h
@@ -102,6 +113,7 @@ target_include_directories(gpufusion_benchmarks PUBLIC "${PROJECT_SOURCE_DIR}/sd
 
 # ---- profiles: generic per-application GPU profiles, discovery, apply/launch/verify -------
 add_library(gpufusion_profiles STATIC
+    profiles/CompatEvidence.cpp profiles/CompatEvidence.h
     profiles/AppDiscovery.cpp profiles/AppDiscovery.h
     profiles/AppProfile.cpp profiles/AppProfile.h
     profiles/KnownOptions.cpp profiles/KnownOptions.h
@@ -111,7 +123,7 @@ add_library(gpufusion_profiles STATIC
     profiles/RunningInstances.cpp profiles/RunningInstances.h
     profiles/Shortcuts.cpp profiles/Shortcuts.h
 )
-target_link_libraries(gpufusion_profiles PUBLIC gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options ole32 shell32 uuid user32)
+target_link_libraries(gpufusion_profiles PUBLIC gpufusion_compat gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options ole32 shell32 uuid user32)
 
 # ---- dispatch: independent jobs spread over several GPUs (class C), measured comparison ---
 add_library(gpufusion_dispatch STATIC
@@ -126,6 +138,12 @@ add_library(gpufusion_diagnostics STATIC
 )
 target_link_libraries(gpufusion_diagnostics PUBLIC gpufusion_monitoring gpufusion_preferences PRIVATE gpufusion::options advapi32)
 
+# ---- compat: compatibility registry and classifier (six capabilities, five statuses) ----------------
+add_library(gpufusion_compat STATIC
+    compat/Compatibility.cpp compat/Compatibility.h
+)
+target_link_libraries(gpufusion_compat PUBLIC gpufusion_hardware gpufusion_preferences PRIVATE gpufusion::options)
+
 # ---- frames: frame-time measurement of running programs (capture data, statistics, sessions) ----
 add_library(gpufusion_frames STATIC
     frames/FrameCapture.cpp frames/FrameCapture.h
@@ -133,6 +151,12 @@ add_library(gpufusion_frames STATIC
     frames/FrameSession.cpp frames/FrameSession.h
 )
 target_link_libraries(gpufusion_frames PUBLIC gpufusion_monitoring gpufusion_benchmarks PRIVATE gpufusion::options advapi32 shell32)
+
+# ---- games: game check (contention, bottleneck indications, before/after) -------------------------
+add_library(gpufusion_games STATIC
+    games/GameCheck.cpp games/GameCheck.h
+)
+target_link_libraries(gpufusion_games PUBLIC gpufusion_frames gpufusion_compat gpufusion_monitoring PRIVATE gpufusion::options pdh)
 
 # ---- ui: Qt Widgets ------------------------------------------------------------
 add_library(gpufusion_ui STATIC
@@ -146,6 +170,7 @@ add_library(gpufusion_ui STATIC
     ui/pages/BenchmarksPage.cpp ui/pages/BenchmarksPage.h
     ui/pages/DashboardPage.cpp ui/pages/DashboardPage.h
     ui/pages/DiagnosticsPage.cpp ui/pages/DiagnosticsPage.h
+    ui/pages/GamesPage.cpp ui/pages/GamesPage.h
     ui/pages/GpuManagerPage.cpp ui/pages/GpuManagerPage.h
     ui/pages/GpusPage.cpp ui/pages/GpusPage.h
     ui/pages/PlaceholderPage.cpp ui/pages/PlaceholderPage.h
@@ -162,7 +187,7 @@ add_library(gpufusion_ui STATIC
     ui/widgets/LiveText.cpp ui/widgets/LiveText.h
     ui/widgets/MonitorCard.cpp ui/widgets/MonitorCard.h
 )
-target_link_libraries(gpufusion_ui PUBLIC gpufusion_core gpufusion_hardware gpufusion_monitoring gpufusion_diagnostics gpufusion_benchmarks gpufusion_profiles gpufusion_dispatch gpufusion_frames Qt6::Widgets PRIVATE gpufusion::options)
+target_link_libraries(gpufusion_ui PUBLIC gpufusion_core gpufusion_hardware gpufusion_monitoring gpufusion_diagnostics gpufusion_benchmarks gpufusion_profiles gpufusion_dispatch gpufusion_frames gpufusion_compat gpufusion_games Qt6::Widgets PRIVATE gpufusion::options)
 
 # ---- application -----------------------------------------------------------------
 add_executable(GPUFusion WIN32

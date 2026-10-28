@@ -240,6 +240,14 @@ private Q_SLOTS:
         QVERIFY(std::abs(p.share[1] - 0.10) < 1e-9); // the policy's initial share
         QVERIFY(p.share[0] >= 0.8);
         QCOMPARE(p.batch[1] % 8, 0u);
+        // The first split is a warm-up (the helper's one-time costs): even a cold, slow one is not judged.
+        b.record(p, fakeReport(1000, 200, { 900, 100 }, Stop::ShareReached));
+        QVERIFY(!b.hasGain());
+        QCOMPARE(b.helper(1).strikes, 0);
+        QVERIFY(std::abs(b.helper(1).share - 0.10) < 1e-9);
+        QVERIFY(b.helper(1).note.find("warm-up") != std::string::npos);
+        p = b.plan(1000);
+        QVERIFY(p.multi());
         b.record(p, fakeReport(1000, 85, { 900, 100 }, Stop::ShareReached)); // 17.6 % faster
         QVERIFY(b.hasGain() && b.lastGain() > 0.15);
         QVERIFY(b.helper(1).enabled);
@@ -318,6 +326,34 @@ private Q_SLOTS:
             r.record(p, p.multi() ? fakeReport(100, 80, { 85, 15 }, Stop::ShareReached) : fakeReport(100, 100, { 100, 0 }, Stop::None));
         }
         QCOMPARE(singles, 1);
+    }
+
+    // What a Balancer learned survives a save/restore: the restored one plans the same split at once
+    // (no new baseline, no warm-up); text for another policy or device count, or damaged text, is refused.
+    void balancerStateRoundTrip()
+    {
+        using gpufusion::Stop;
+        gpufusion::Balancer b(2, gpufusion::Policy::Balanced, 8);
+        for (int i = 0; i < 6; ++i) {
+            const gpufusion::Plan p = b.plan(1000);
+            b.record(p, p.multi() ? fakeReport(1000, 85, { 850, 150 }, Stop::ShareReached) : fakeReport(1000, 100, { 1000, 0 }, Stop::None));
+        }
+        const std::string state = b.save();
+        QVERIFY(state.rfind("gfbalancer2 ", 0) == 0);
+        gpufusion::Balancer restored(2, gpufusion::Policy::Balanced, 8);
+        QVERIFY(restored.restore(state));
+        const gpufusion::Plan a = b.plan(1000), c = restored.plan(1000);
+        QVERIFY(c.multi());
+        QCOMPARE(c.share, a.share);
+        QCOMPARE(restored.baselineMsPerUnit(), b.baselineMsPerUnit());
+        QCOMPARE(restored.save(), state);
+
+        gpufusion::Balancer other(2, gpufusion::Policy::Conservative, 8), three(3, gpufusion::Policy::Balanced, 8);
+        QVERIFY(!other.restore(state));
+        QVERIFY(!three.restore(state));
+        QVERIFY(!restored.restore("gfbalancer2 1 2 x"));
+        QVERIFY(!restored.restore(state.substr(0, state.size() / 2)));
+        QCOMPARE(restored.save(), state); // a refused restore changes nothing
     }
 
     void modeAndRequests()

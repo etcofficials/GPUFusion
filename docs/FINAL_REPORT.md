@@ -1,10 +1,39 @@
 # GPU Fusion — final report
 
-State at version 1.11 (2026-10-26), on the reference PC: Windows 10 Pro 22H2, Intel Core i5-2400S,
+State at version 1.11 (2026-10-26), with a 1.14 summary in section 0, on the reference PC: Windows 10 Pro 22H2, Intel Core i5-2400S,
 NVIDIA GeForce GT 730 (Fermi GF108, driver 391.35, WDDM 2.3), Intel HD Graphics 2000 (driver
 9.17.10.4459, WDDM 1.2). This report separates what was **verified on that hardware** from what is
 **inferred or hypothetical**, and lists what was **not done**. Details and measurements are in the
 linked documents.
+
+## 0. Status at 1.14 (2026-10-28): the six capabilities
+
+Sections 1–5 below describe 1.11. Since then (1.12–1.14) GPU Fusion added:
+
+- the adaptive scheduler;
+- frame-time measurement;
+- row kernels;
+- a C library;
+- a Godot extension;
+- the compatibility registry;
+- the game check.
+
+The six capabilities stand as follows. Every number was measured on the reference PC.
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Render one program's frames on both GPUs | **Impossible on this hardware** | the HD 2000 has no D3D12; neither GPU has Vulkan ([GAME_MULTI_GPU_FEASIBILITY.md](GAME_MULTI_GPU_FEASIBILITY.md)) |
+| One program's separate workloads on both GPUs | **Supported for programs that integrate the SDK** | photos split 1.14×; Godot extension 1.09–1.12×; hash 1.14×; all bit-exact ([SDK.md](SDK.md)) |
+| Move other programs off a game's GPU | **Supported for programs with a known GPU option** (Chromium verified; Electron experimental) | a GPU-bound game: 27.7 → 42.9 fps after Edge moved to the Intel GPU ([GAMES.md](GAMES.md)) |
+| Choose a program's GPU | **Per mechanism, verified per program** | Chromium switch, FFmpeg option, SDK; Windows' preference cannot select the Intel GPU here ([COMPATIBILITY_REGISTRY.md](COMPATIBILITY_REGISTRY.md)) |
+| Jobs on both GPUs at once | **Supported** (dispatcher; GPUFusionImage batch) | photos batch 1.15×; FFmpeg decoding correct but not faster (the HD 2000's decoder dominates) |
+| Scheduling and resource management | **Supported in the SDK; measurement and contention checks for everything else** | the Balancer adapts and switches the slower GPU off when it does not pay; the game check and frame times ([FRAME_TIMES.md](FRAME_TIMES.md)) |
+
+**Not done:**
+
+- A real game measured: GPU Fusion does not start your games, and none was running.
+- A Minecraft mod, Unity and Unreal samples, Electron verification.
+- The 6 tests that write a Windows GPU preference were not run: no authorization.
 
 ## 1. Verified on the reference PC
 

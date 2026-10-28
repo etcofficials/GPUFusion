@@ -31,4 +31,22 @@ set_property(TARGET GPUFusionFrameCapture PROPERTY MSVC_RUNTIME_LIBRARY "MultiTh
 # reports its own present times: the ground truth the frame-time capture is checked against.
 add_executable(GPUFusionFrameTest frametest/main.cpp)
 target_link_libraries(GPUFusionFrameTest PRIVATE gpufusion::options d3d11 d3d12 d3d9 dxgi opengl32 winmm)
+target_include_directories(GPUFusionFrameTest PRIVATE "${CMAKE_BINARY_DIR}/generated")
+add_dependencies(GPUFusionFrameTest gpufusion_workloads)
 set_property(TARGET GPUFusionFrameTest PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+# GPUFusionImage: filters photographs on both GPUs with the SDK's row kernels (public headers only,
+# no Qt) and measures the split and batch modes against the fastest GPU alone.
+add_executable(GPUFusionImage imagetool/main.cpp)
+target_link_libraries(GPUFusionImage PRIVATE gpufusion::options dxgi d3d11 psapi windowscodecs ole32)
+target_include_directories(GPUFusionImage PRIVATE "${CMAKE_BINARY_DIR}/generated" "${PROJECT_SOURCE_DIR}/sdk/include")
+add_dependencies(GPUFusionImage gpufusion_workloads)
+set_property(TARGET GPUFusionImage PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+# GPUFusionSDK.dll: the SDK behind a C ABI (sdk/include/gpufusion/gpufusion_c.h) for other languages and
+# engines' native plugins. Static CRT: the DLL can be copied next to any program on its own.
+add_library(GPUFusionSDK SHARED "${PROJECT_SOURCE_DIR}/sdk/c/gpufusion_c.cpp" "${PROJECT_SOURCE_DIR}/sdk/include/gpufusion/gpufusion_c.h")
+target_link_libraries(GPUFusionSDK PRIVATE gpufusion::options dxgi d3d11)
+target_include_directories(GPUFusionSDK PRIVATE "${CMAKE_BINARY_DIR}/generated" "${PROJECT_SOURCE_DIR}/sdk/include")
+add_dependencies(GPUFusionSDK gpufusion_workloads)
+set_property(TARGET GPUFusionSDK PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

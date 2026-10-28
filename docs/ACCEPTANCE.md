@@ -174,6 +174,23 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Roblox / Minecraft split across GPUs | ✘ (not possible) | neither integrates the SDK; splitting a game's rendering needs D3D12 on both GPUs — [GPU_SELECTION.md](GPU_SELECTION.md#roblox-and-minecraft) |
 | Existing single-GPU modes still work | ✔ (without the registry tests) | the 29 non-registry suites pass; the 6 registry-labelled suites (which write and restore the probe's own Windows GPU preference) were not run for 1.12, because changing Windows GPU preferences was not authorised for this phase |
 
+## 1.14 — engine, games and compatibility
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Both GPUs do real, verified work at the same time for supported workloads | ✔ | photos: split 1.14×, batch 1.15× faster than the GT 730 alone; Godot 1.09–1.12×; every output bit-exact (`tst_rows_live`, [SDK.md](SDK.md)) |
+| Distribution measured and adaptive, not a fixed split; the slower GPU kept off when it does not pay | ✔ | Intel's share 7.7–13 % from measurement; warm-up split not judged; FFmpeg jobs: "no significant difference" reported, not a gain |
+| Failure recovery, no lost or duplicated results | ✔ | `tst_rows_live::failingHelperFallsBackToThePrimary`, `tst_sdk` |
+| SDK: discovery, capabilities, partitioning, submission, results, fallback, timing, versions, examples | ✔ | `rows.h`, `gpufusion_c.h`/`GPUFusionSDK.dll` (ABI version), Python example, Godot extension |
+| An integration beyond a synthetic benchmark | ✔ | Godot GDExtension (engine extension mechanism) on real photos; FFmpeg jobs (a real third-party program) |
+| Frame times of real applications | ✔ (partly) | Edge (a real application) measured; the game was a stand-in. No real game measured: none was started without the user |
+| Contention detection with the telemetry available | ✔ | game check: per-process engine use on both GPUs, competitors, indications labelled as such |
+| Application GPU management with safe, verifiable mechanisms | ✔ | profile variants for Chromium/Electron/FFmpeg/SDK programs; undo; nothing closed or restarted; Windows' preference not written |
+| A real improvement measured | ✔ | a GPU-bound game: 27.7 → 42.9 fps after Edge moved to the Intel GPU (significance rule, 56 samples each) |
+| Broad, growable compatibility with honest statuses | ✔ | registry: 6 capabilities × 5 statuses, classifier, user entries (`tst_compat`) |
+| Rendering one game's frames on both GPUs | ✘ (impossible here) | the HD 2000 has no D3D12, neither GPU has Vulkan |
+| Lightweight | ✔ | the Games page samples only when asked; a check's own CPU use is tested under 10 % and measured at a few tenths of a percent |
+
 ## 1.13 — frame-time measurement (phase 1 of game support)
 
 | Requirement | Status | Evidence |
@@ -198,6 +215,9 @@ LF checksum file); it was rebuilt, re-tested with the full suite and re-verified
 | Adaptive sessions filed and explained correctly on one GPU | ✔ | `tst_labmodel::adaptiveScheduler`; real session saved with `lab.adaptive.single` |
 
 ## Tests at release
+
+1.14.0: 41 CTest entries; the 35 that change no Windows setting were run and all pass (325 QtTest
+results, 4 elevated cases skipped). The 6 registry-labelled entries were not run (2026-10-28).
 
 1.13.0: 38 CTest entries; the 32 that change no Windows setting were run and all pass with
 reference-machine expectations. The 4 elevated cases of `tst_frames_live` were skipped (not

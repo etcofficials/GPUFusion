@@ -83,7 +83,7 @@ function Wait-Program([string]$exe, [string[]]$arguments, [int]$seconds, [string
 }
 if (Test-Path $portable) { Remove-Item -LiteralPath $portable -Recurse -Force }
 New-Item -ItemType Directory -Path $portable | Out-Null
-Copy-Item (Join-Path $bin 'GPUFusion.exe'), (Join-Path $bin 'GPUFusionProbe.exe'), (Join-Path $bin 'GPUFusionSplitDemo.exe'), (Join-Path $bin 'GPUFusionFrameCapture.exe'), (Join-Path $bin 'GPUFusionFrameTest.exe') $portable
+Copy-Item (Join-Path $bin 'GPUFusion.exe'), (Join-Path $bin 'GPUFusionProbe.exe'), (Join-Path $bin 'GPUFusionSplitDemo.exe'), (Join-Path $bin 'GPUFusionFrameCapture.exe'), (Join-Path $bin 'GPUFusionFrameTest.exe'), (Join-Path $bin 'GPUFusionImage.exe'), (Join-Path $bin 'GPUFusionSDK.dll') $portable
 # Same selection as the build tree (cmake/Deploy.cmake): Widgets app, Windows platform, ico/png.
 Invoke-Native 'windeployqt' {
     windeployqt --release --no-translations --no-system-d3d-compiler --no-system-dxc-compiler --no-opengl-sw `
@@ -99,7 +99,8 @@ Copy-Item (Join-Path $repo 'third_party\THIRD-PARTY-NOTICES.txt') $portable
 Copy-Item (Join-Path $repo 'third_party\licenses') (Join-Path $portable 'licenses') -Recurse
 # User documentation, shown by the app's "Open user guide" (links between these documents work).
 New-Item -ItemType Directory -Force (Join-Path $portable 'docs') | Out-Null
-foreach ($doc in 'USER_GUIDE.md', 'FINAL_REPORT.md', 'GPU_SELECTION.md', 'MULTI_GPU_RESEARCH.md', 'TROUBLESHOOTING.md', 'SDK.md', 'COMPATIBILITY.md') {
+foreach ($doc in 'USER_GUIDE.md', 'FINAL_REPORT.md', 'GPU_SELECTION.md', 'MULTI_GPU_RESEARCH.md', 'TROUBLESHOOTING.md', 'SDK.md', 'COMPATIBILITY.md',
+                 'FRAME_TIMES.md', 'GAMES.md', 'COMPATIBILITY_REGISTRY.md', 'MULTI_GPU_SCHEDULER.md', 'GAME_MULTI_GPU_FEASIBILITY.md') {
     Copy-Item (Join-Path $repo "docs\$doc") (Join-Path $portable "docs\$doc")
 }
 Copy-Item (Join-Path $repo 'README.md') $portable
@@ -126,6 +127,28 @@ Copy-Item (Join-Path $bin 'GPUFusionLauncher.exe') (Join-Path $release 'GPUFusio
 if (Test-Path $zip) { Remove-Item -LiteralPath $zip -Force }
 Compress-Archive -Path $portable -DestinationPath $zip -CompressionLevel Optimal
 
+# ---- SDK ZIP: headers, shaders, the C library, examples, the Godot extension -------------------------
+$sdkZip = Join-Path $release 'GPUFusion-SDK.zip'
+$sdkStage = Join-Path $release 'GPUFusion-SDK'
+if (Test-Path $sdkStage) { Remove-Item -LiteralPath $sdkStage -Recurse -Force }
+New-Item -ItemType Directory -Path $sdkStage | Out-Null
+foreach ($part in 'include', 'shaders', 'c', 'examples') { Copy-Item (Join-Path $repo "sdk\$part") (Join-Path $sdkStage $part) -Recurse }
+New-Item -ItemType Directory -Path (Join-Path $sdkStage 'bin') | Out-Null
+Copy-Item (Join-Path $bin 'GPUFusionSDK.dll'), (Join-Path $repo 'build/release/tools/GPUFusionSDK.lib') (Join-Path $sdkStage 'bin')
+Copy-Item (Join-Path $repo 'build\release\generated\shaders\blur_ps.h') (Join-Path $sdkStage 'shaders')
+# The Godot extension: sources, build files, and the demo project with the built DLL (if it was built).
+New-Item -ItemType Directory -Path (Join-Path $sdkStage 'godot') | Out-Null
+foreach ($part in 'src', 'CMakeLists.txt', 'build_profile.json') { Copy-Item (Join-Path $repo "sdk\godot\$part") (Join-Path $sdkStage "godot\$part") -Recurse }
+New-Item -ItemType Directory -Path (Join-Path $sdkStage 'godot\demo\bin') | Out-Null
+foreach ($f in 'project.godot', 'gpufusion.gdextension', 'check.gd') { Copy-Item (Join-Path $repo "sdk\godot\demo\$f") (Join-Path $sdkStage "godot\demo\$f") }
+$godotDll = Join-Path $repo 'sdk\godot\demo\bin\gpufusion_godot.dll'
+if (Test-Path $godotDll) { Copy-Item $godotDll (Join-Path $sdkStage 'godot\demo\bin') } else { Write-Warning "Godot extension not built (scripts\build-godot.ps1); its DLL is not in the SDK ZIP" }
+Copy-Item (Join-Path $repo 'docs\SDK.md') $sdkStage
+Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $sdkStage 'LICENSE.txt')
+if (Test-Path $sdkZip) { Remove-Item -LiteralPath $sdkZip -Force }
+Compress-Archive -Path $sdkStage -DestinationPath $sdkZip -CompressionLevel Optimal
+Remove-Item -LiteralPath $sdkStage -Recurse -Force
+
 # ---- installer -------------------------------------------------------------------------------------
 $makensis = 'G:\DevTools\nsis\makensis.exe'
 if (Test-Path $makensis) {
@@ -138,7 +161,7 @@ if (Test-Path $makensis) {
 }
 
 # ---- checksums -------------------------------------------------------------------------------------
-$lines = foreach ($f in @($zip, $setup)) {
+$lines = foreach ($f in @($zip, $setup, (Join-Path $release 'GPUFusion-SDK.zip'))) {
     if (Test-Path $f) { "{0} *{1}" -f (Get-FileHash -Algorithm SHA256 $f).Hash.ToLowerInvariant(), (Split-Path -Leaf $f) }
 }
 # LF line endings: `sha256sum -c SHA256SUMS.txt` (Git Bash, Linux, macOS) rejects CRLF file names.

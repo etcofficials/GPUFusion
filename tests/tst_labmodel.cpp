@@ -186,7 +186,7 @@ private Q_SLOTS:
         QVERIFY2(a.rows[2].detail.contains(QStringLiteral("helper used in 80 % of runs")) && a.rows[2].detail.contains(QStringLiteral("split runs alone 57.0 ms")),
                  qPrintable(a.rows[2].detail));
         const QString all = a.findings.join(u'\n');
-        QVERIFY2(all.contains(QStringLiteral("“Adaptive, performance”: 70.5 ms (1.08× slower than NVIDIA GeForce GT 730 alone)")), qPrintable(all));
+        QVERIFY2(all.contains(QStringLiteral("“Adaptive, performance”: 70.5 ms (compared with NVIDIA GeForce GT 730 alone: 1.08× slower)")), qPrintable(all));
         QVERIFY(all.contains(QStringLiteral("after the last run: in use")));
         QVERIFY(all.contains(QStringLiteral("Fallback check")) && all.contains(QStringLiteral("re-ran 16 rows")));
 

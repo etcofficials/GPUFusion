@@ -113,6 +113,24 @@ included. Images were correct in every run. "Speed-up" is GPU Fusion's own verdi
   holds for the hash workload, not for every workload; the scheduler always uses the measured
   fastest device.
 
+## 1.14: real work beyond the hash [Test]
+
+- **Row kernels** (`rows.h`) use the same scheduler for any image kernel. Measured:
+  - 13 photographs: split 1.14× and batch 1.15× faster than the GT 730 alone;
+  - Godot 4.7.2 through the GDExtension: 1.09–1.12× in all 5 repeats.
+
+  Every output was bit-exact. Details are in [SDK.md](SDK.md).
+- **Warm-up split.** The first split after a helper is enabled is no longer judged:
+  - **Why:** its batches include one-time costs (textures, the driver's first use of the shader).
+  - **Before the change:** in one of three Godot runs the conservative policy switched the HD 2000
+    off for good after a cold first split.
+  - **After:** 5 of 5 runs gained.
+- **Persistence.** `Balancer::save()` and `restore()` let a program start with what it learned
+  last time.
+- **Job batches with FFmpeg** (8 decodes): on both GPUs 9.0 s, against 8.8 s for the HD 2000 alone with
+  2 jobs. No significant difference, with identical outputs: the dispatcher uses both GPUs correctly,
+  and its verdict says when that does not pay.
+
 ## Limits
 
 - **Only some workloads benefit.** The gain applies to workloads of independent units whose results

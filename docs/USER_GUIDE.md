@@ -101,6 +101,24 @@ On the **Applications** page, select a running program and click **Measure frame
 
 Details, accuracy and limits: [FRAME_TIMES.md](FRAME_TIMES.md).
 
+### Help a game: check what competes for its GPU
+
+On the **Games** page:
+
+1. Start your game, click **Refresh list**, pick the game and click **Check**.
+2. GPU Fusion watches for the chosen time, then lists:
+   - every other program using the game's GPU, and whether it could move to the Intel GPU (and how);
+   - what the CPU and GPU loads indicate.
+
+   Tick *Also measure its frame times* to get measured frame rates (Windows asks for administrator
+   rights).
+3. If a competitor can move, for example a browser, choose it and click **Create an Intel-GPU
+   variant**. Start that variant from the GPU Manager when it suits you, then check the game again,
+   with the first check chosen under *Compare with*.
+
+GPU Fusion does not close or restart anything for this. **Undo variants created here** removes those
+variants. Measured example and limits: [GAMES.md](GAMES.md).
+
 ## 5. One program on two GPUs: variants
 
 **Add variant…** creates another profile for the same program, e.g. "FFmpeg — Intel" and

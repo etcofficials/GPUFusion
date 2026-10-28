@@ -292,7 +292,7 @@ LabAnalysis analyzeAdaptive(const Session& session)
                               .arg(ms(r.duration.mean), vs, ref.target.name);
             continue;
         }
-        QString line = QStringLiteral("“%1”: %2 ms (%3 than %4 alone); %5 did %6 % of the rows on average; the scheduler's own time was %7 ms per run")
+        QString line = QStringLiteral("“%1”: %2 ms (compared with %4 alone: %3); %5 did %6 % of the rows on average; the scheduler's own time was %7 ms per run")
                            .arg(r.name, ms(r.duration.mean), vs, ref.target.name, helperName)
                            .arg(metricMean(r, QStringLiteral("w1.rowsPercent")), 0, 'f', 1).arg(metricMean(r, QStringLiteral("scheduleMs")), 0, 'f', 3);
         if (r.cpuPercent.isOk())

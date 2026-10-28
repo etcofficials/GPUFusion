@@ -10,6 +10,7 @@
 #include "monitoring/UsageObserver.h"
 #include "platform/windows/ProcessList.h"
 #include "preferences/PreferenceService.h"
+#include "profiles/CompatEvidence.h"
 #include "profiles/KnownOptions.h"
 #include "profiles/ProfileActions.h"
 #include "profiles/ProfileStore.h"
@@ -17,7 +18,9 @@
 #include "profiles/Shortcuts.h"
 #include "diagnostics/DiagnosticReport.h"
 #include "dispatch/JobDispatcher.h"
+#include "compat/Compatibility.h"
 #include "frames/FrameMeasure.h"
+#include "games/GameCheck.h"
 #include "frames/FrameSession.h"
 #include "ui/DiagnosticsCollector.h"
 #include "ui/AppContext.h"
@@ -151,6 +154,23 @@ int main(int argc, char* argv[])
         QStringLiteral("With --measure-frames: compare with an earlier measurement (its id, or \"last\" for the newest one of the same program)."),
         QStringLiteral("id"));
     cli.addOptions({ measureFramesOpt, framesSecondsOpt, framesLabelOpt, framesCompareOpt });
+    const QCommandLineOption compatibilityOpt(QStringLiteral("compatibility"),
+        QStringLiteral("Assess what GPU Fusion can do with programs (the executables given after the options; otherwise those with a GPU profile "
+                       "and the running programs that use a graphics API), for six separate capabilities. Reads files only; starts nothing. "
+                       "Writes an HTML table to the reports folder and exits."));
+    cli.addOption(compatibilityOpt);
+    const QCommandLineOption gameCheckOpt(QStringLiteral("game-check"),
+        QStringLiteral("Watch a running game (process id or executable name) and the programs around it for a while: which programs compete "
+                       "for its GPU, whether each could move to the other GPU, CPU and GPU indications. Starts, closes and changes nothing. "
+                       "Saves the check and an HTML report and exits."), QStringLiteral("pid|exe"));
+    const QCommandLineOption gameSecondsOpt(QStringLiteral("game-seconds"), QStringLiteral("With --game-check: length (default 15)."), QStringLiteral("seconds"),
+                                            QStringLiteral("15"));
+    const QCommandLineOption gameFramesOpt(QStringLiteral("game-frames"),
+        QStringLiteral("With --game-check: also measure the game's frame times (asks for administrator rights through the Windows prompt)."));
+    const QCommandLineOption gameLabelOpt(QStringLiteral("game-label"), QStringLiteral("With --game-check: a label such as \"before\"."), QStringLiteral("text"));
+    const QCommandLineOption gameCompareOpt(QStringLiteral("game-compare"),
+        QStringLiteral("With --game-check: compare with an earlier check (its id, or \"last\" for the newest of the same program)."), QStringLiteral("id"));
+    cli.addOptions({ gameCheckOpt, gameSecondsOpt, gameFramesOpt, gameLabelOpt, gameCompareOpt });
     cli.addOptions({ dataDirOpt, pageOpt, smokeOpt, shotOpt, fullShotOpt, shotDelayOpt, verifyOpt, exportOpt, benchOpt, labOpt, labSizeOpt, labPolicyOpt,
                      verifyAppOpt, verifySecondsOpt, applyProfileOpt, modeOpt, profileArgsOpt, knownOptionOpt, closeRunningOpt, variantOpt, exportProfilesOpt, importProfilesOpt, replaceExistingOpt, interactiveOpt, createShortcutOpt, shortcutDirOpt, launchProfileOpt, verifyProfileOpt,
                      dispatchOpt, dispatchInputsOpt, dispatchOutputOpt, dispatchPatternOpt, dispatchGpusOpt, dispatchCompareOpt });
@@ -512,6 +532,153 @@ int main(int argc, char* argv[])
         exitCode = app.exec(); // the code passed to QApplication::exit, including early exits
         gf::log::shutdown();
         return exitCode;
+    }
+
+    if (cli.isSet(gameCheckOpt)) {
+        const QString which = cli.value(gameCheckOpt);
+        bool numeric = false;
+        quint32 pid = which.toUInt(&numeric);
+        QString name, path;
+        {
+            gf::mon::win::ProcessList list;
+            quint64 newest = 0;
+            for (const gf::mon::win::ProcessInfo& p : list.snapshot()) {
+                const bool match = numeric ? p.pid == pid
+                                           : p.name.compare(which, Qt::CaseInsensitive) == 0 || p.name.compare(which + QStringLiteral(".exe"), Qt::CaseInsensitive) == 0;
+                if (match && (numeric || p.creationTime >= newest)) {
+                    pid = p.pid;
+                    name = p.name;
+                    path = p.path;
+                    newest = p.creationTime;
+                }
+            }
+        }
+        if (name.isEmpty()) {
+            qCCritical(lcApp).noquote() << "No running process" << which;
+            gf::log::shutdown();
+            return 2;
+        }
+        const QString gamesDir = QDir(data.root).filePath(QStringLiteral("games"));
+        std::optional<gf::games::GameCheck> before;
+        if (cli.isSet(gameCompareOpt)) {
+            const QString id = cli.value(gameCompareOpt);
+            for (const gf::games::GameCheck& c : gf::games::loadChecks(gamesDir))
+                if (id == QLatin1StringView("last") ? c.name.compare(name, Qt::CaseInsensitive) == 0 && c.error.isEmpty() : c.id == id) {
+                    before = c;
+                    break;
+                }
+            if (!before) {
+                qCCritical(lcApp).noquote() << "No earlier game check" << id << "to compare with.";
+                gf::log::shutdown();
+                return 2;
+            }
+        }
+        int exitCode = 1;
+        auto run = [&] {
+            const gf::hw::DetectionResult detection = *hardware.latest();
+            std::optional<bool> reaches;
+            if (const auto& v = preferences.lastVerification(); v && v->preferenceHasNoEffect())
+                reaches = false;
+            const gf::compat::SystemFacts system = gf::compat::systemFacts(detection, reaches);
+            const QList<gf::compat::Entry> entries = gf::compat::loadEntries(QDir(data.configDir()).filePath(QStringLiteral("compatibility.json")));
+            const QList<gf::profiles::AppProfile> profileList = profileStore.list();
+            auto assessExe = [&](const QString& exe) {
+                return gf::compat::assess(gf::compat::examine(exe), system, entries, gf::profiles::evidenceFor(exe, profileList));
+            };
+            gf::games::CheckOptions o;
+            o.pid = pid;
+            o.name = name;
+            o.path = path;
+            o.seconds = std::clamp(cli.value(gameSecondsOpt).toInt(), 3, 600);
+            o.label = cli.value(gameLabelOpt);
+            o.measureFrames = cli.isSet(gameFramesOpt);
+            o.helperPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("GPUFusionFrameCapture.exe"));
+            o.workDir = data.tempDir();
+            const gf::games::GameCheck c = gf::games::runCheck(gf::mon::targetsFrom(detection), o, assessExe);
+            QString error;
+            if (!gf::games::saveCheck(gamesDir, c, &error))
+                qCWarning(lcApp).noquote() << "Could not save the check:" << error;
+            QDir().mkpath(data.reportsDir());
+            const QString report = QDir(data.reportsDir()).filePath(c.id + QStringLiteral(".html"));
+            QFile f(report);
+            if (f.open(QIODevice::WriteOnly))
+                f.write(gf::games::reportHtml(c, before ? &*before : nullptr).toUtf8());
+            qCInfo(lcApp).noquote() << "Game check" << c.id;
+            for (const QString& line : gf::games::summaryLines(c))
+                qCInfo(lcApp).noquote() << "  " << line;
+            if (before)
+                for (const QString& line : gf::games::compareChecks(*before, c))
+                    qCInfo(lcApp).noquote() << "  Compared with" << before->id << ":" << line;
+            qCInfo(lcApp).noquote() << "  Report:" << QDir::toNativeSeparators(report);
+            exitCode = c.error.isEmpty() ? 0 : 1;
+            QApplication::exit(exitCode);
+        };
+        if (hardware.isRunning() || !hardware.latest())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
+        else
+            QTimer::singleShot(0, &app, run);
+        exitCode = app.exec();
+        gf::log::shutdown();
+        return exitCode;
+    }
+
+    if (cli.isSet(compatibilityOpt)) {
+        auto run = [&] {
+            const gf::hw::DetectionResult detection = *hardware.latest();
+            std::optional<bool> reaches;
+            if (const auto& v = preferences.lastVerification(); v && v->preferenceHasNoEffect())
+                reaches = false;
+            const gf::compat::SystemFacts system = gf::compat::systemFacts(detection, reaches);
+            QStringList problems;
+            const QList<gf::compat::Entry> entries = gf::compat::loadEntries(QDir(data.configDir()).filePath(QStringLiteral("compatibility.json")), &problems);
+            for (const QString& p : problems)
+                qCWarning(lcApp).noquote() << "Compatibility registry:" << p;
+            const QList<gf::profiles::AppProfile> profileList = profileStore.list();
+            QStringList exes;
+            for (const QString& a : cli.positionalArguments())
+                exes << QFileInfo(a).absoluteFilePath();
+            const bool explicitList = !exes.isEmpty();
+            if (!explicitList) {
+                for (const gf::profiles::AppProfile& p : profileList)
+                    exes << p.exePath;
+                gf::mon::win::ProcessList list;
+                for (const gf::mon::win::ProcessInfo& p : list.snapshot())
+                    if (!p.path.isEmpty())
+                        exes << p.path;
+            }
+            QList<gf::compat::Assessment> results;
+            QSet<QString> seen;
+            for (const QString& exe : exes) {
+                const QString key = QDir::toNativeSeparators(exe).toLower();
+                if (seen.contains(key) || !QFileInfo::exists(exe))
+                    continue;
+                seen.insert(key);
+                const gf::compat::ProgramFacts facts = gf::compat::examine(exe);
+                const gf::compat::Assessment a = gf::compat::assess(facts, system, entries, gf::profiles::evidenceFor(exe, profileList));
+                // Without an explicit list: only programs with a graphics API, a runtime GPU Fusion knows, or a registry entry.
+                if (!explicitList && facts.apis().isEmpty() && facts.runtimes.isEmpty() && a.matchedEntries.isEmpty())
+                    continue;
+                results << a;
+            }
+            std::sort(results.begin(), results.end(), [](const auto& x, const auto& y) { return x.program.exeName < y.program.exeName; });
+            for (const gf::compat::Assessment& a : results)
+                for (const QString& line : gf::compat::assessmentLines(a))
+                    qCInfo(lcApp).noquote() << line;
+            QDir().mkpath(data.reportsDir());
+            const QString report = QDir(data.reportsDir()).filePath(QStringLiteral("compatibility-%1.html").arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"))));
+            QFile f(report);
+            if (f.open(QIODevice::WriteOnly))
+                f.write(gf::compat::assessmentsHtml(results, system).toUtf8());
+            qCInfo(lcApp).noquote() << "Compatibility:" << results.size() << "programs assessed; report" << QDir::toNativeSeparators(report);
+            QApplication::exit(0);
+        };
+        if (hardware.isRunning() || !hardware.latest())
+            QObject::connect(&hardware, &gf::hw::HardwareService::detectionFinished, &app, run, Qt::SingleShotConnection);
+        else
+            QTimer::singleShot(0, &app, run);
+        const int code = app.exec();
+        gf::log::shutdown();
+        return code;
     }
 
     if (cli.isSet(measureFramesOpt)) {

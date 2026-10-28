@@ -35,6 +35,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <functional>
 #include <string>
@@ -427,6 +428,7 @@ public:
         m_hasGain = false;
         m_sinceBaseline = 0;
         m_baselineRuns = 0;
+        m_splitRuns = 0;
     }
 
     Policy policy() const { return m_policy; }
@@ -535,6 +537,14 @@ public:
             return;
         }
         ++m_sinceBaseline;
+        // The first split is a warm-up: the helper's first batches include one-time costs (its textures,
+        // the driver's first use of the shader), so it is neither compared nor counted.
+        if (m_splitRuns++ == 0) {
+            for (std::size_t d = 1; d < m_devices; ++d)
+                if (plan.enabled[d] && m_helpers[d].enabled)
+                    m_helpers[d].note = "first split (a warm-up, not judged)";
+            return;
+        }
         push(m_splitHistory, perUnit);
         m_split = fastest(m_splitHistory);
         if (m_baseline <= 0 || m_split <= 0)
@@ -571,7 +581,96 @@ public:
         }
     }
 
+    // What the Balancer has learned, as one line of text, so a program can keep it between runs (for
+    // example in its settings) and start with the shares it found last time instead of measuring the
+    // primary alone again. restore() accepts only text from save() for the same number of devices and
+    // policy; anything else leaves the Balancer unchanged and returns false. A restored Balancer
+    // re-measures the primary alone after kRefreshEvery splits, as usual, so stale data is replaced.
+    std::string save() const
+    {
+        std::string s = "gfbalancer2 " + std::to_string(int(m_policy)) + " " + std::to_string(m_devices) + " " + std::to_string(m_baselineRuns)
+                      + " " + std::to_string(m_sinceBaseline) + " " + std::to_string(m_hasGain ? 1 : 0) + " " + num(m_baseline) + " " + num(m_split) + " "
+                      + num(m_lastGain);
+        for (std::size_t d = 0; d < m_devices; ++d)
+            s += " " + num(m_rate[d]) + " " + num(m_helpers[d].share) + " " + std::to_string(m_helpers[d].strikes) + " " + (m_helpers[d].enabled ? "1" : "0");
+        for (const std::vector<double>* h : { &m_baseHistory, &m_splitHistory }) {
+            s += " " + std::to_string(h->size());
+            for (double v : *h)
+                s += " " + num(v);
+        }
+        return s;
+    }
+    bool restore(const std::string& text)
+    {
+        const char* p = text.c_str();
+        auto word = [&](std::string* out) {
+            while (*p == ' ')
+                ++p;
+            const char* b = p;
+            while (*p && *p != ' ')
+                ++p;
+            out->assign(b, p);
+            return !out->empty();
+        };
+        auto number = [&](double* out) {
+            std::string w;
+            if (!word(&w))
+                return false;
+            char* end = nullptr;
+            *out = std::strtod(w.c_str(), &end);
+            return end && *end == 0 && std::isfinite(*out);
+        };
+        std::string tag;
+        double policy = 0, devices = 0, baselineRuns = 0, since = 0, hasGain = 0, baseline = 0, split = 0, lastGain = 0;
+        if (!word(&tag) || tag != "gfbalancer2" || !number(&policy) || !number(&devices) || !number(&baselineRuns) || !number(&since)
+            || !number(&hasGain) || !number(&baseline) || !number(&split) || !number(&lastGain))
+            return false;
+        if (int(policy) != int(m_policy) || std::size_t(devices) != m_devices)
+            return false;
+        std::vector<double> rate(m_devices);
+        std::vector<Helper> helpers(m_helpers);
+        for (std::size_t d = 0; d < m_devices; ++d) {
+            double share = 0, strikes = 0, enabled = 0;
+            if (!number(&rate[d]) || !number(&share) || !number(&strikes) || !number(&enabled) || share < 0 || share > 1)
+                return false;
+            helpers[d].share = share;
+            helpers[d].strikes = int(strikes);
+            helpers[d].enabled = enabled != 0;
+            helpers[d].note = d == 0 ? "primary" : (helpers[d].enabled ? "restored from an earlier run" : "switched off in an earlier run");
+        }
+        std::vector<double> histories[2];
+        for (auto& h : histories) {
+            double n = 0;
+            if (!number(&n) || n < 0 || n > double(kWindow))
+                return false;
+            for (int i = 0; i < int(n); ++i) {
+                double v = 0;
+                if (!number(&v))
+                    return false;
+                h.push_back(v);
+            }
+        }
+        m_rate = rate;
+        m_helpers = helpers;
+        m_baselineRuns = int(baselineRuns);
+        m_sinceBaseline = int(since);
+        m_splitRuns = std::max(1, int(since)); // restored: the warm-up split happened in an earlier run
+        m_hasGain = hasGain != 0;
+        m_baseline = baseline;
+        m_split = split;
+        m_lastGain = lastGain;
+        m_baseHistory = histories[0];
+        m_splitHistory = histories[1];
+        return true;
+    }
+
 private:
+    static std::string num(double v)
+    {
+        char buf[40];
+        std::snprintf(buf, sizeof buf, "%.17g", v);
+        return buf;
+    }
     static double ewma(double old, double v) { return old > 0 ? 0.5 * old + 0.5 * v : v; }
     static void push(std::vector<double>& history, double v)
     {
@@ -600,6 +699,7 @@ private:
     bool m_hasGain = false;
     int m_sinceBaseline = 0;
     int m_baselineRuns = 0;
+    int m_splitRuns = 0;    // splits recorded so far (the first is a warm-up)
 };
 
 } // namespace gpufusion

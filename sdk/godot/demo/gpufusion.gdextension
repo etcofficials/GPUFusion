@@ -1,0 +1,8 @@
+[configuration]
+
+entry_symbol = "gpufusion_library_init"
+compatibility_minimum = "4.5"
+
+[libraries]
+
+windows.x86_64 = "res://bin/gpufusion_godot.dll"

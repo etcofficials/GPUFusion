@@ -343,6 +343,26 @@
 - Next: phase 2, general application discovery and GPU workload management, built on this as the
   before/after gate.
 
+## 1.19 — engine, games and compatibility, release 1.14.0 (2026-10-28)
+
+**Done:**
+
+- SDK row kernels, with real photos split and batched on both GPUs: 1.14–1.15×.
+- A C library, a Python example, and a Godot GDExtension: 1.09–1.12× in Godot 4.7.2.
+- The Balancer's warm-up and persistence.
+- The compatibility registry: six capabilities, five statuses, a classifier and user entries.
+- The game check and Games page, with safe variants and undo.
+- Measured: moving a real background app (Edge) to the Intel GPU raised a GPU-bound game from 27.7 to
+  42.9 fps.
+- FFmpeg jobs on both GPUs: correct, but not faster for decoding.
+
+**Not done:**
+
+- a real game measured (none started without the user);
+- a Minecraft mod;
+- Unity and Unreal samples;
+- Electron verification.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.

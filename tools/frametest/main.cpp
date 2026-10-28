@@ -4,6 +4,7 @@
 //
 //   GPUFusionFrameTest.exe --api d3d11|d3d12|d3d9|opengl [--seconds S] [--interval-ms N] [--adapter LUID]
 //                          [--vsync] [--stall-every K --stall-ms M]
+// --load N (Direct3D 11): a GPU-bound frame, N hash iterations per pixel of a 1280 x 720 target.
 // --interval-ms paces the frames (0 = as fast as the API allows). --adapter (Direct3D 11/12 only)
 // renders on that adapter. --stall-every adds a stall of M ms every K frames (known stutters).
 // Prints JSON: the API, the adapter, the number of presents and their own interval statistics.
@@ -16,6 +17,9 @@
 #include <dxgi1_4.h>
 #include <gl/GL.h>
 #include <wrl/client.h>
+
+#include "shaders/fullscreen_vs.h"
+#include "shaders/hash_ps.h"
 
 #include <algorithm>
 #include <cmath>
@@ -127,9 +131,48 @@ struct D3D11Renderer : Renderer {
     ComPtr<IDXGISwapChain1> swap;
     ComPtr<ID3D11RenderTargetView> rtv;
     UINT sync = 0;
-    bool init(HWND w, const std::wstring& luid, bool vsync)
+    // --load: each frame also draws GPU Fusion's hash shader over a 1280 x 720 integer target, `load`
+    // iterations per pixel: a GPU-bound "game" whose frame time the GPU's speed sets.
+    UINT load = 0;
+    ComPtr<ID3D11VertexShader> vs;
+    ComPtr<ID3D11PixelShader> ps;
+    ComPtr<ID3D11Buffer> cb;
+    ComPtr<ID3D11RenderTargetView> work;
+    bool initLoad()
+    {
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = 1280;
+        td.Height = 720;
+        td.MipLevels = td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R32_UINT;
+        td.SampleDesc.Count = 1;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET;
+        ComPtr<ID3D11Texture2D> t;
+        D3D11_BUFFER_DESC bd{ 16, D3D11_USAGE_DEFAULT, D3D11_BIND_CONSTANT_BUFFER, 0, 0, 0 };
+        const UINT params[4] = { load, 1, 0, 0 };
+        D3D11_SUBRESOURCE_DATA init{ params, 0, 0 };
+        return SUCCEEDED(device->CreateTexture2D(&td, nullptr, &t)) && SUCCEEDED(device->CreateRenderTargetView(t.Get(), nullptr, &work))
+            && SUCCEEDED(device->CreateVertexShader(g_fullscreen_vs, sizeof(g_fullscreen_vs), nullptr, &vs))
+            && SUCCEEDED(device->CreatePixelShader(g_hash_ps, sizeof(g_hash_ps), nullptr, &ps)) && SUCCEEDED(device->CreateBuffer(&bd, &init, &cb));
+    }
+    void drawLoad()
+    {
+        ID3D11RenderTargetView* v = work.Get();
+        context->OMSetRenderTargets(1, &v, nullptr);
+        const D3D11_VIEWPORT vp{ 0, 0, 1280, 720, 0, 1 };
+        context->RSSetViewports(1, &vp);
+        context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        context->IASetInputLayout(nullptr);
+        context->VSSetShader(vs.Get(), nullptr, 0);
+        context->PSSetShader(ps.Get(), nullptr, 0);
+        ID3D11Buffer* b = cb.Get();
+        context->PSSetConstantBuffers(0, 1, &b);
+        context->Draw(3, 0);
+    }
+    bool init(HWND w, const std::wstring& luid, bool vsync, UINT loadIterations)
     {
         sync = vsync ? 1 : 0;
+        load = loadIterations;
         ComPtr<IDXGIFactory2> f;
         if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&f))))
             return (error = "no DXGI"), false;
@@ -158,10 +201,14 @@ struct D3D11Renderer : Renderer {
         ComPtr<ID3D11Texture2D> back;
         swap->GetBuffer(0, IID_PPV_ARGS(&back));
         device->CreateRenderTargetView(back.Get(), nullptr, &rtv);
+        if (load > 0 && !initLoad())
+            return (error = "could not set up the load shader"), false;
         return true;
     }
     bool present(int frame) override
     {
+        if (load > 0)
+            drawLoad();
         const float c[4] = { 0.1f, float(frame % 60) / 60.0f, 0.3f, 1.0f };
         ID3D11RenderTargetView* v = rtv.Get();
         context->OMSetRenderTargets(1, &v, nullptr);
@@ -350,6 +397,7 @@ int wmain(int argc, wchar_t** argv)
     double seconds = 10, intervalMs = 0, stallMs = 0;
     int stallEvery = 0;
     bool vsync = false;
+    UINT load = 0;
     for (int i = 1; i < argc; ++i) {
         const std::wstring a = argv[i];
         const bool more = i + 1 < argc;
@@ -358,11 +406,12 @@ int wmain(int argc, wchar_t** argv)
         else if (a == L"--interval-ms" && more) intervalMs = std::clamp(std::wcstod(argv[++i], nullptr), 0.0, 1000.0);
         else if (a == L"--adapter" && more) luid = argv[++i];
         else if (a == L"--vsync") vsync = true;
+        else if (a == L"--load" && more) load = UINT(std::clamp(_wtoi(argv[++i]), 0, 100000));
         else if (a == L"--stall-every" && more) stallEvery = std::max(0, _wtoi(argv[++i]));
         else if (a == L"--stall-ms" && more) stallMs = std::clamp(std::wcstod(argv[++i], nullptr), 0.0, 1000.0);
         else {
             std::fprintf(stderr, "usage: GPUFusionFrameTest --api d3d11|d3d12|d3d9|opengl [--seconds S] [--interval-ms N] [--adapter LUID] [--vsync] "
-                                 "[--stall-every K --stall-ms M]\n");
+                                 "[--stall-every K --stall-ms M] [--load N]\n");
             return 2;
         }
     }
@@ -373,7 +422,7 @@ int wmain(int argc, wchar_t** argv)
     HWND w = makeWindow((L"GPU Fusion frame test - " + api).c_str());
     std::unique_ptr<Renderer> r;
     bool ok = false;
-    if (api == L"d3d11") { auto x = std::make_unique<D3D11Renderer>(); ok = x->init(w, luid, vsync); r = std::move(x); }
+    if (api == L"d3d11") { auto x = std::make_unique<D3D11Renderer>(); ok = x->init(w, luid, vsync, load); r = std::move(x); }
     else if (api == L"d3d12") { auto x = std::make_unique<D3D12Renderer>(); ok = x->init(w, luid, vsync); r = std::move(x); }
     else if (api == L"d3d9") { auto x = std::make_unique<D3D9Renderer>(); ok = x->init(w, vsync); r = std::move(x); }
     else if (api == L"opengl") { auto x = std::make_unique<OpenGlRenderer>(); ok = x->init(w, vsync); r = std::move(x); }

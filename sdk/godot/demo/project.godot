@@ -1,0 +1,7 @@
+; GPU Fusion for Godot: demo and check project.
+config_version=5
+
+[application]
+
+config/name="GPU Fusion demo"
+config/features=PackedStringArray("4.5")

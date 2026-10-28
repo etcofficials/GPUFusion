@@ -18,6 +18,7 @@ see the **[User guide](docs/USER_GUIDE.md)**.
 |---|---|
 | **Dashboard** | Live load, memory and sensors of every physical GPU, including WDDM 1.x GPUs that Task Manager cannot show. |
 | **GPUs** | Every adapter Windows exposes, its driver, and its tested Direct3D capabilities. |
+| **Games** | Check a running game: which programs compete for its GPU and whether each could move to the other GPU, CPU/GPU indications, measured frame times, before/after ([GAMES.md](docs/GAMES.md)). |
 | **Applications** | Which process uses which GPU, live. For programs with a GPU profile: whether they are on the GPU the profile asks for (✓/✗). Nothing is launched for this. **Measure frame times…** measures a running program's frame times from outside, with Windows' graphics events, and compares before/after ([FRAME_TIMES.md](docs/FRAME_TIMES.md)). |
 | **GPU Manager** | A GPU profile for **any program**: Automatic, Integrated, Discrete or Both GPUs (SDK programs: both GPUs are *offered* to programs that integrate the SDK; others run on one GPU). For each mode it shows what that mode can do for this program on this PC, and applies the strongest mechanism that is justified: Windows' per-app preference where it is shown to work, and otherwise the program's own GPU option (placeholders such as `{luid_pair}`, `{dxgi_index}`) or the [SDK](docs/SDK.md). It can launch the program and **verify which GPU it really used**, offer to close a running instance first, create **shortcuts** that start the program through its profile, hold **variants** (several profiles for one program), **export/import** profiles, and back them up automatically to a folder you choose. |
 | **GPU Preferences** | Windows' own per-app preference, what it does on this PC (measured with a probe), journalled changes with undo. |
@@ -151,7 +152,7 @@ GPUs, drivers and registry (`-L hardware`). See [docs/TESTING.md](docs/TESTING.m
 - [Compatibility](docs/COMPATIBILITY.md) · [Storage policy](docs/STORAGE_POLICY.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
 - **[User guide](docs/USER_GUIDE.md)** (also inside the app: GPU Manager → *Open user guide*)
 - **[Final report](docs/FINAL_REPORT.md)**: what was verified on the reference PC, what is inferred, what was not done
-- [Frame-time measurement](docs/FRAME_TIMES.md) · [Games and both GPUs: feasibility](docs/GAME_MULTI_GPU_FEASIBILITY.md)
+- [Frame-time measurement](docs/FRAME_TIMES.md) · [Games](docs/GAMES.md) · [Compatibility registry](docs/COMPATIBILITY_REGISTRY.md) · [Games and both GPUs: feasibility](docs/GAME_MULTI_GPU_FEASIBILITY.md)
 - [GPU selection and the GPU Manager](docs/GPU_SELECTION.md) · [SDK](docs/SDK.md) · [Adaptive multi-GPU scheduler](docs/MULTI_GPU_SCHEDULER.md) · [Multi-GPU research](docs/MULTI_GPU_RESEARCH.md)
 
 ## Known limitations (current)

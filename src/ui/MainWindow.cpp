@@ -8,6 +8,7 @@
 #include "ui/pages/BenchmarksPage.h"
 #include "ui/pages/DashboardPage.h"
 #include "ui/pages/DiagnosticsPage.h"
+#include "ui/pages/GamesPage.h"
 #include "ui/pages/GpuManagerPage.h"
 #include "ui/pages/GpusPage.h"
 #include "ui/pages/PlaceholderPage.h"
@@ -90,6 +91,8 @@ MainWindow::MainWindow(AppContext& context, QWidget* parent) : QMainWindow(paren
         showPage(QStringLiteral("manager"));
         manager->addProgram(exe); // selects its profile; creates one if it has none
     });
+    addPage({ QStringLiteral("games"), tr("Games"), tr("Check a running game: what competes for its GPU, what could move to the other GPU, frame times before and after.") },
+            new GamesPage(m_context));
     addPage({ QStringLiteral("preferences"), tr("GPU Preferences"), tr("The Windows per-app graphics preference — what it does here, and changing it safely.") },
             new PreferencesPage(m_context));
     addPage({ QStringLiteral("workloads"), tr("Workload Lab"), tr("Can both GPUs make one job faster? Measured experiments, compared with the best single device.") },

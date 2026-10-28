@@ -1,0 +1,3 @@
+{
+    "enabled_classes": ["Image", "RefCounted", "Resource", "OS", "Engine"]
+}

@@ -15,3 +15,7 @@
 *.user
 compile_commands.json
 CMakeUserPresets.json
+
+# Godot extension build output and Godot's project cache
+/sdk/godot/demo/bin/
+/sdk/godot/demo/.godot/

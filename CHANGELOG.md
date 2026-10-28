@@ -1,5 +1,97 @@
 # Changelog
 
+## 1.14.0 — 2026-10-28
+
+Both GPUs doing real work, games helped where the hardware allows, and broad compatibility built as
+reusable infrastructure. Six capabilities are kept apart everywhere, because they are easily confused:
+
+1. rendering one program's frames on both GPUs;
+2. one program's separate workloads on both GPUs;
+3. moving other programs' work off a game's GPU;
+4. choosing a program's GPU;
+5. jobs on both GPUs at once;
+6. scheduling and resource management.
+
+**Real work on both GPUs: SDK row kernels** ([SDK.md](docs/SDK.md))
+
+- New `gpufusion/rows.h`:
+  - runs any SM 4.0 pixel-shader kernel over an image's rows on every GPU at once, with halo rows;
+  - divides the rows with the adaptive scheduler;
+  - re-runs a failed helper batch on the primary;
+  - times upload, compute and readback per GPU with GPU timestamps, and waits without spinning.
+- A sample kernel (tent blur, exact integer arithmetic) and its CPU reference.
+- **`GPUFusionImage.exe`** filters photographs (the Windows wallpapers, read only). It measures the
+  *split* mode (rows of each image on both GPUs) and the *batch* mode (whole images as jobs on both
+  GPUs) against the fastest GPU alone. On the reference PC, 13 photos, every output bit-exact:
+  - split: **1.14× faster** than the GT 730 alone;
+  - batch: **1.15× faster**.
+- **The Balancer learns persistently:** `save()` and `restore()`. It also no longer judges a helper on
+  its first, cold split; that cost one Godot run its gain before.
+
+**`GPUFusionSDK.dll`: the SDK as a C library** (`gpufusion_c.h`)
+
+- For C#, Java (FFM), Python, Rust and engines' native plugins (Unity).
+- A Python example (`sdk/examples/python`) blurs on both GPUs and checks the result.
+
+**Godot integration** (`sdk/godot`)
+
+- A GDExtension class, `GPUFusionCompute`, that runs a Godot project's image work on every GPU.
+- Built with godot-cpp 4.5 and tested in Godot 4.7.2, headless, on a real photo: **1.09–1.12×
+  faster** in 5 of 5 repeats, every result bit-exact.
+- `scripts/build-godot.ps1` builds and checks it.
+
+**Games page and `--game-check`** ([GAMES.md](docs/GAMES.md))
+
+- Watches any running game and every other program:
+  - which programs use the game's GPU, and whether and how each could move to the other GPU;
+  - CPU and GPU indications, labelled as indications;
+  - optionally measured frame times;
+  - before/after verdicts and an HTML report.
+- **Starts, closes and changes nothing.**
+- The only action: creating, after you confirm, a *profile variant* that starts a competitor on the
+  Intel GPU next time. Your own profiles and Windows' preference are not touched. *Undo* removes
+  exactly the variants created there.
+- **Measured** with a real background program (a temporary Edge instance with a WebGL page) and a
+  GPU-bound stand-in game:
+  - Edge on the GT 730: the game ran at 27.7 fps;
+  - Edge started on the Intel GPU: **42.9 fps** (1.55×; alone: 49.9 fps);
+  - frame times measured from outside, 56 one-second samples per case.
+
+**Compatibility registry** ([COMPATIBILITY_REGISTRY.md](docs/COMPATIBILITY_REGISTRY.md))
+
+- Every program is assessed for the six capabilities, each as Supported, Experimental, Partially
+  supported, Unsupported or Not tested.
+- **From:**
+  - its files: imported graphics APIs; Chromium, Electron, Java, Unity, Unreal, Godot, SDL, .NET or
+    the GPU Fusion SDK; Store packaging;
+  - this PC's verified facts;
+  - registry entries with evidence;
+  - GPU Fusion's own verifications.
+- **Growable:** your own entries go in `<data>\config\compatibility.json`.
+- `--compatibility [exe...]` writes an HTML table.
+
+**Job dispatcher with a real third-party program**
+
+- 8 FFmpeg hardware-decode jobs ran on both GPUs at once with identical outputs.
+- For decoding they were not faster than the HD 2000 alone with 2 jobs (9.0 s vs 8.8 s): its
+  decoder is the faster one. Recorded as such in the registry.
+
+**Frame-time test**
+
+- `GPUFusionFrameTest --load N`: a GPU-bound Direct3D 11 stand-in game.
+
+**Fixed**
+
+- A Workload Lab finding read "no significant difference than … alone".
+
+**Tests**
+
+- New: `tst_compat`, `tst_gamecheck` (simulated samples, labelled so), and `tst_rows_live` (real
+  GPUs: every GPU and both together bit-exact, the failing-helper fallback, the C library, the game
+  check's sampling).
+- `tst_sdk` adds the Balancer warm-up and save/restore.
+
+
 ## 1.13.0 — 2026-10-28
 
 Frame-time measurement of running programs: the first step of game support. A change offered for a
