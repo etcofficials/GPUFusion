@@ -89,7 +89,8 @@ function Restore-KeptData {
     }
 }
 # Whatever fails below (the development disk is unreliable), the user's data goes back in place.
-trap { Restore-KeptData; break }
+# (A trap covers the whole script, also errors before this point, when there is nothing to restore yet.)
+trap { if (Get-Command Restore-KeptData -ErrorAction SilentlyContinue) { Restore-KeptData }; break }
 
 # Starts a program and waits for it, but never forever: a launch that hangs (e.g. on unreadable
 # sectors of a failing disk) fails the check instead of blocking packaging.
