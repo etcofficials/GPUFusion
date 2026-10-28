@@ -345,3 +345,7 @@ Investigated after a user saw Roblox at about 57 % 3D on the GT 730 in Both mode
 
 What *can* use both GPUs here: GPU Fusion's own workloads (Workload Lab), independent job batches,
 and programs that integrate the SDK, such as `GPUFusionSplitDemo.exe`.
+
+Every legitimate way games could benefit from both GPUs on this PC is assessed in
+[GAME_MULTI_GPU_FEASIBILITY.md](GAME_MULTI_GPU_FEASIBILITY.md). The most promising is measured there:
+keep the game alone on the GT 730 and move other programs' 3D work to the Intel GPU.

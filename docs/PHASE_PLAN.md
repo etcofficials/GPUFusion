@@ -321,6 +321,19 @@
 - Checked and not a defect: a per-process GPU listed twice cannot give a false "✓ Both GPUs active",
   because the monitor keeps one entry per GPU per process.
 
+## 1.17 — games and both GPUs: feasibility (2026-10-28, report only)
+
+- Every legitimate approach was assessed for this hardware, with sources, the games' own logs and one
+  experiment: [GAME_MULTI_GPU_FEASIBILITY.md](GAME_MULTI_GPU_FEASIBILITY.md).
+- Splitting a game's rendering is impossible here: the HD 2000 has no D3D12 or Vulkan, and Fermi has
+  no Vulkan.
+- Measured: a 3D background program on the GT 730 cost a GPU-bound stand-in game 77 % more time, and
+  0 % when moved to the Intel GPU; video decoding cost nothing on either GPU.
+- Proposed next, not started:
+  - frame-time capture through ETW;
+  - companion offload with a before/after verdict;
+  - one engine plugin (Godot GDExtension) over a DLL build of the SDK.
+
 ## Open items
 
 - The development disk (G:) is failing (TROUBLESHOOTING.md): replace it; the code is now on GitHub.
